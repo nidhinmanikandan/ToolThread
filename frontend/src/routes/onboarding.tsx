@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
-
 const roles = ["Frontend Developer", "UI/UX Designer", "AI Engineer", "Mobile Developer"];
 const interests = ["Design", "Development", "AI", "Productivity"];
 
@@ -51,11 +50,13 @@ function OnboardingPage() {
       <p className="text-muted-foreground mb-8">We'll personalize your learning journey.</p>
       {step === 1 && (
         <>
-
           {roles.map((roleOption) => (
             <button
               key={roleOption}
-              onClick={() => setRole(roleOption)}
+              onClick={() => {
+                setRole(roleOption);
+                console.log("Role clicked:", roleOption);
+              }}
               className={`block w-full rounded-xl p-4 text-left ${
                 role === roleOption ? "bg-purple-600" : "bg-card"
               }`}
@@ -72,7 +73,10 @@ function OnboardingPage() {
           {interests.map((interestOption) => (
             <button
               key={interestOption}
-              onClick={() => setInterest(interestOption)}
+              onClick={() => {
+                setInterest(interestOption);
+                console.log("Interest clicked:", interestOption);
+              }}
               className={`block w-full rounded-xl p-4 text-left ${
                 interest === interestOption ? "bg-purple-600" : "bg-card"
               }`}
@@ -89,7 +93,10 @@ function OnboardingPage() {
           {levels.map((levelOption) => (
             <button
               key={levelOption}
-              onClick={() => setLevel(levelOption)}
+              onClick={() => {
+                setLevel(levelOption);
+                console.log("Level clicked:", levelOption);
+              }}
               className={`block w-full rounded-xl p-4 text-left ${
                 level === levelOption ? "bg-purple-600" : "bg-card"
               }`}
@@ -99,7 +106,7 @@ function OnboardingPage() {
           ))}
         </>
       )}
-      
+
       <button onClick={handleNext}>Next</button>
     </div>
   );
