@@ -2,8 +2,21 @@ const mongoose = require("mongoose");
 
 const RecommendationSchema = new mongoose.Schema(
   {
-    userId: Number,
-
+    role: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    interest: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    level: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     tools: [
       {
         name: String,
@@ -17,10 +30,12 @@ const RecommendationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
-module.exports = mongoose.model(
-  "Recommendation",
-  RecommendationSchema
+RecommendationSchema.index(
+  { role: 1, interest: 1, level: 1 },
+  { unique: true },
 );
+
+module.exports = mongoose.model("Recommendation", RecommendationSchema);

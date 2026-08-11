@@ -2,28 +2,11 @@ const express = require("express");
 const router = express.Router();
 
 const User = require("../models/User");
-const Recommendation = require("../models/Recommendation");
-const recommendTools = require("../services/aiRecommendation");
+const resolveRecommendations = require("../services/recommendationResolver");
 
 router.get("/", async (req, res) => {
   try {
-    const userId = 1;
-
-    // Check cache and ensure it contains the expected number of tools
-    const cached = await Recommendation.findOne({ userId });
-
-    if (cached && Array.isArray(cached.tools) && cached.tools.length === 12) {
-      console.log("Serving cached recommendations");
-      return res.json(cached.tools);
-    }
-
-    if (cached) {
-      console.log("Cached recommendations invalid or stale, regenerating...");
-    } else {
-      console.log("Generating recommendations with Gemini...");
-    }
-
-    const profile = await User.findOne({ userId });
+    const profile = await User.findOne({ userId: 1 });
 
     if (!profile) {
       return res.status(404).json({
@@ -31,16 +14,7 @@ router.get("/", async (req, res) => {
       });
     }
 
-    const tools = await recommendTools(profile);
-
-    if (cached) {
-      await Recommendation.updateOne({ userId }, { tools });
-    } else {
-      await Recommendation.create({
-        userId,
-        tools,
-      });
-    }
+    const tools = await resolveRecommendations(profile);
 
     res.json(tools);
   } catch (err) {
@@ -48,6 +22,36 @@ router.get("/", async (req, res) => {
 
     res.status(500).json({
       error: "Recommendation failed",
+    });
+  }
+});
+
+router.post("/", async (req, res) => {
+  try {
+    const { role, interest, level } = req.body;
+
+    let profile = null;
+
+    if (role && interest && level) {
+      profile = { role, interest, level };
+    } else {
+      profile = await User.findOne({ userId: 1 });
+    }
+
+    if (!profile) {
+      return res.status(400).json({
+        error: "Profile information is required",
+      });
+    }
+
+    const tools = await resolveRecommendations(profile);
+
+    res.json(tools);
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      error: "Recommendation resolution failed",
     });
   }
 });

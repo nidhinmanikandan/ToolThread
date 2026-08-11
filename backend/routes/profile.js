@@ -1,9 +1,11 @@
 const User = require("../models/User");
 const express = require("express");
 
+const resolveRecommendations = require("../services/recommendationResolver");
+
 const router = express.Router();
 
-const { saveProfile, getProfile } = require("../services/profileService");
+const { getProfile } = require("../services/profileService");
 
 router.get("/", (req, res) => {
   res.json(getProfile());
@@ -34,6 +36,12 @@ router.post("/", async (req, res) => {
       interest,
       level,
     });
+  }
+
+  try {
+    await resolveRecommendations(profile);
+  } catch (err) {
+    console.error("Failed to resolve recommendations after profile save:", err);
   }
 
   res.json(profile);

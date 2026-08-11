@@ -21,8 +21,6 @@ const toolRoadmapRoute = require("./routes/toolRoadmap");
 
 const profileRoutes = require("./routes/profile");
 
-const userProfile = require("./data/userProfile");
-
 const progressData = require("./data/progressData");
 
 const projectChallenges = require("./data/projectChallenges");
@@ -32,11 +30,6 @@ const Progress = require("./models/Progress");
 const User = require("./models/User");
 
 const recommendationRoutes = require("./routes/recommendations");
-
-
-
-
-
 
 // Create the Express application instance
 const app = express();
@@ -64,39 +57,12 @@ app.use("/api/progress", progressRoutes);
 
 app.use("/api/recommendations", recommendationRoutes);
 
-
-
-
 //connect database
 connectDB();
 
 // Start the server listening on port 5000
 app.listen(5000, () => {
   console.log("Server running on port 5000");
-});
-
-app.get("/api/recommendations", (req, res) => {
-  const { role, interest } = userProfile;
-
-  let tools = [];
-
-  if (role === "Frontend Developer") {
-    tools = ["Framer", "React", "GSAP", "Tailwind CSS"];
-  }
-
-  if (role === "UI/UX Designer") {
-    tools = ["Figma", "Framer", "Uizard", "Adobe XD"];
-  }
-
-  if (role === "AI Engineer") {
-    tools = ["Python", "LangChain", "OpenAI", "Hugging Face"];
-  }
-
-  if (role === "Mobile Developer") {
-    tools = ["Flutter", "React Native", "Firebase", "Android Studio"];
-  }
-
-  res.json(tools);
 });
 
 app.post("/api/progress", (req, res) => {
