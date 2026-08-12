@@ -26,7 +26,9 @@ const CandidateToolSchema = new mongoose.Schema(
 
     sources: [
       {
-        type: String, // github, hackernews, reddit, npm, etc.
+        type: {
+          type: String,
+        }, // github, hackernews, reddit, npm, etc.
         url: String,
         externalId: String,
         metadata: mongoose.Schema.Types.Mixed,
