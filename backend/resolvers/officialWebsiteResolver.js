@@ -1,26 +1,30 @@
 const Tool = require("../models/Tool");
 
 async function officialWebsiteResolver(tool) {
-  // GitHub homepage already available
-  if (
-    tool.officialUrl &&
-    !tool.officialUrl.includes("github.com")
-  ) {
+  if (tool.officialUrl && tool.officialUrl.trim() !== "") {
     await Tool.updateOne(
       { _id: tool._id },
       {
-        officialWebsite: tool.officialUrl,
+        officialUrl: tool.officialUrl,
         resolved: true,
+        lastChecked: new Date(),
       }
     );
 
     console.log(`Resolved: ${tool.name}`);
-
     return;
   }
 
-  // Placeholder for future search
-  console.log(`Cannot resolve: ${tool.name}`);
+  // Unresolvable: mark resolved to prevent infinite retries
+  await Tool.updateOne(
+    { _id: tool._id },
+    {
+      resolved: true,
+      lastChecked: new Date(),
+    }
+  );
+
+  console.log(`Marked unresolvable: ${tool.name}`);
 }
 
 module.exports = officialWebsiteResolver;
