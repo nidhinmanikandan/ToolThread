@@ -37,10 +37,25 @@ module.exports = async function githubSearchCollector() {
         tags: repo.topics || [],
 
         platform: repo.language || "",
+        platforms: repo.language ? [repo.language] : [],
 
         isTrending: true,
 
         source: "github-search",
+
+        sources: [
+          {
+            type: "github-search",
+            url: repo.html_url,
+            externalId: String(repo.id),
+            metadata: {
+              stars: repo.stargazers_count,
+              forks: repo.forks_count,
+            },
+          },
+        ],
+
+        lastDiscoveredAt: new Date(),
       },
       { upsert: true },
     );

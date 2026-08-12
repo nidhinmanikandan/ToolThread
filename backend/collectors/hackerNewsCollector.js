@@ -1,4 +1,5 @@
 const axios = require("axios");
+const CandidateTool = require("../models/CandidateTool");
 
 const TOOL_KEYWORDS = [
   "tool",
@@ -16,6 +17,16 @@ const TOOL_KEYWORDS = [
   "service",
   "open source",
 ];
+
+function getLogoDomain(urlStr) {
+  try {
+    if (!urlStr) return "news.ycombinator.com";
+    const parsed = new URL(urlStr);
+    return parsed.hostname.replace(/^www\./, "");
+  } catch (e) {
+    return "news.ycombinator.com";
+  }
+}
 
 function getToolScore(story) {
   const title = (story.title || "").toLowerCase();
@@ -101,6 +112,7 @@ async function collectHackerNewsTools() {
 
     // Detect stories that may represent tools
     const candidates = stories
+      .filter((story) => story && story.title)
       .map((story) => ({
         ...story,
         toolScore: getToolScore(story),
@@ -108,7 +120,6 @@ async function collectHackerNewsTools() {
       .filter((story) => story.toolScore >= 0.4);
 
     console.log(`Fetched ${stories.length} Hacker News stories.`);
-
     console.log(`Detected ${candidates.length} potential tool stories:\n`);
 
     candidates.forEach((story, index) => {
@@ -117,32 +128,55 @@ async function collectHackerNewsTools() {
       );
     });
 
-    // Convert detected stories into CandidateTool-compatible objects
-    const toolCandidates = candidates.map((story) => ({
-      name: story.title,
+    let savedCount = 0;
+    for (const story of candidates) {
+      const officialUrl =
+        story.url || `https://news.ycombinator.com/item?id=${story.id}`;
+      const logoDomain = getLogoDomain(story.url);
 
-      description: story.text || story.title,
-
-      officialUrl:
-        story.url || `https://news.ycombinator.com/item?id=${story.id}`,
-
-      sources: [
+      await CandidateTool.updateOne(
         {
-          type: "hackernews",
-          url: `https://news.ycombinator.com/item?id=${story.id}`,
-          externalId: String(story.id),
-
-          metadata: {
-            score: story.score || 0,
-            comments: story.descendants || 0,
-          },
+          $or: [
+            { officialUrl: officialUrl },
+            {
+              sources: {
+                $elemMatch: {
+                  type: "hackernews",
+                  externalId: String(story.id),
+                },
+              },
+            },
+          ],
         },
-      ],
+        {
+          name: story.title,
+          category: "HackerNews Submission",
+          description: story.text || story.title,
+          officialUrl: officialUrl,
+          logoDomain: logoDomain,
+          source: "hackernews",
+          isTrending: (story.score || 0) > 100,
+          discoveryScore: story.toolScore,
+          sources: [
+            {
+              type: "hackernews",
+              url: `https://news.ycombinator.com/item?id=${story.id}`,
+              externalId: String(story.id),
+              metadata: {
+                score: story.score || 0,
+                comments: story.descendants || 0,
+              },
+            },
+          ],
+          lastDiscoveredAt: new Date(),
+        },
+        { upsert: true },
+      );
+      savedCount++;
+    }
 
-      lastDiscoveredAt: new Date(),
-    }));
-
-    return toolCandidates;
+    console.log(`Saved ${savedCount} Hacker News candidate tools.`);
+    return candidates;
   } catch (error) {
     console.error(
       "Hacker News Collector Error:",

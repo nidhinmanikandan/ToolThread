@@ -9,9 +9,20 @@ const CandidateToolSchema = new mongoose.Schema(
 
     logoDomain: String,
 
+    category: String,
+
+    isTrending: {
+      type: Boolean,
+      default: false,
+    },
+
+    source: String,
+
     tags: [String],
 
     platform: String,
+
+    platforms: [String],
 
     sources: [
       {
