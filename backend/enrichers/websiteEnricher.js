@@ -34,15 +34,21 @@ module.exports = async function websiteEnricher() {
 
       tool.description = description || tool.description;
 
-      tool.logo = logo;
+      tool.logo = logo || tool.logo;
 
       tool.enriched = true;
+
+      tool.lastChecked = new Date();
 
       await tool.save();
 
       console.log(`Enriched: ${tool.name}`);
     } catch (err) {
-      console.log(`Failed: ${tool.name}`);
+      console.log(`Failed to enrich ${tool.name}: ${err.message}`);
+
+      tool.enriched = true;
+      tool.lastChecked = new Date();
+      await tool.save();
     }
   }
 
