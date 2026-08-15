@@ -1,3 +1,4 @@
+import { useSidebarCollapse } from "./SidebarContext";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Wrench,
@@ -9,6 +10,8 @@ import {
   HelpCircle,
   MessageSquare,
   Sparkles,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 
 type NavEntry = { label: string; icon: React.ElementType; to?: string };
@@ -29,37 +32,85 @@ const toolsNav: NavEntry[] = [
 
 export function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { collapsed, setCollapsed } = useSidebarCollapse();
 
   return (
-    <aside className="fixed left-[20px] top-[20px] z-30 flex h-[calc(100vh-40px)] w-[240px] flex-col rounded-[18px] bg-[var(--surface-dark)] px-4 py-6">
-      <div className="mb-8 flex items-center gap-2 px-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)]">
-          <Sparkles className="h-4 w-4 text-foreground" />
+    <aside
+      style={{
+        width: collapsed ? "72px" : "240px",
+        backgroundColor: collapsed ? "transparent" : "var(--surface-dark)",
+        transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease",
+      }}
+      className="fixed left-[20px] top-[20px] z-30 flex h-[calc(100vh-40px)] flex-col rounded-[18px] px-4 py-6 overflow-hidden"
+    >
+      {/* Header: logo + toggle button */}
+      <div className="mb-8 flex items-center justify-between px-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)]">
+            <Sparkles className="h-4 w-4 text-foreground" />
+          </div>
+          <span
+            className="text-[15px] font-semibold tracking-tight text-foreground whitespace-nowrap overflow-hidden"
+            style={{
+              opacity: collapsed ? 0 : 1,
+              maxWidth: collapsed ? "0px" : "120px",
+              transition: "opacity 0.2s ease, max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+            }}
+          >
+            Logo
+          </span>
         </div>
-        <span className="text-[15px] font-semibold tracking-tight text-foreground">Logo</span>
+
+        {/* Toggle button */}
+        <button
+          id="sidebar-toggle-btn"
+          onClick={() => setCollapsed((c) => !c)}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-[var(--surface-dark-active)] hover:text-foreground"
+        >
+          {collapsed ? (
+            <ChevronsRight className="h-4 w-4" />
+          ) : (
+            <ChevronsLeft className="h-4 w-4" />
+          )}
+        </button>
       </div>
 
+      {/* Main nav */}
       <nav className="flex flex-col gap-0">
         {mainNav.map((item) => (
-          <NavItem key={item.label} {...item} active={!!item.to && item.to === pathname} />
+          <NavItem
+            key={item.label}
+            {...item}
+            active={!!item.to && item.to === pathname}
+            collapsed={collapsed}
+          />
         ))}
       </nav>
 
+      {/* Bottom nav */}
       <nav className="mt-auto flex flex-col gap-0 pt-6">
         {toolsNav.map((item) => (
-          <NavItem key={item.label} {...item} />
+          <NavItem key={item.label} {...item} collapsed={collapsed} />
         ))}
       </nav>
     </aside>
   );
 }
 
-function NavItem({ label, icon: Icon, active, to }: NavEntry & { active?: boolean }) {
-  const itemClassName = `flex items-center gap-4 rounded-2xl px-2 py-2.5 text-[14px] font-regular transition-colors ${
+function NavItem({
+  label,
+  icon: Icon,
+  active,
+  to,
+  collapsed,
+}: NavEntry & { active?: boolean; collapsed: boolean }) {
+  const itemClassName = `group relative flex items-center gap-4 rounded-2xl px-2 py-2.5 text-[14px] font-regular transition-colors ${
     active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
   }`;
 
-  const iconClassName = `flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)] transition-all ${
+  const iconClassName = `flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)] transition-all ${
     active ? "opacity-100" : "opacity-70 hover:opacity-100"
   }`;
 
@@ -68,7 +119,31 @@ function NavItem({ label, icon: Icon, active, to }: NavEntry & { active?: boolea
       <div className={iconClassName}>
         <Icon className="h-[18px] w-[18px]" />
       </div>
-      <span>{label}</span>
+
+      {/* Label — fades and collapses out */}
+      <span
+        className="whitespace-nowrap overflow-hidden"
+        style={{
+          opacity: collapsed ? 0 : 1,
+          maxWidth: collapsed ? "0px" : "160px",
+          transition: "opacity 0.15s ease, max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
+        {label}
+      </span>
+
+      {/* Tooltip — only visible when collapsed */}
+      {collapsed && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 z-50 whitespace-nowrap rounded-lg bg-[var(--surface-dark-active)] px-3 py-1.5 text-[13px] font-medium text-foreground shadow-lg opacity-0 transition-opacity group-hover:opacity-100"
+          style={{ transitionDelay: "0.05s" }}
+        >
+          {/* Arrow */}
+          <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-[var(--surface-dark-active)]" />
+          {label}
+        </span>
+      )}
     </>
   );
 
