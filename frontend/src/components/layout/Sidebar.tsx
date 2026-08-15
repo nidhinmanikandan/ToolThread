@@ -39,7 +39,7 @@ export function Sidebar() {
         width: collapsed ? "72px" : "240px",
         transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
-      className="fixed left-[20px] top-[20px] z-30 flex h-[calc(100vh-40px)] flex-col rounded-[18px] px-4 py-6 overflow-hidden"
+      className="fixed left-[20px] top-[20px] z-30 flex h-auto flex-col rounded-[18px] px-4 py-6 overflow-hidden bg-transparent"
     >
       {/* Right-side separator line — fades away when collapsed */}
       <div
@@ -69,7 +69,7 @@ export function Sidebar() {
       </div>
 
       {/* Main nav */}
-      <nav className="flex flex-col gap-0">
+      <nav className="flex flex-col gap-1">
         {mainNav.map((item) => (
           <NavItem
             key={item.label}
@@ -80,8 +80,11 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom nav */}
-      <nav className="mt-auto flex flex-col gap-0 pt-6">
+      {/* Separator line inside sidebar menu items */}
+      <div className="my-4 border-t border-[var(--border,rgba(255,255,255,0.08))]" />
+
+      {/* Bottom nav grouped together with no mt-auto */}
+      <nav className="flex flex-col gap-1">
         {toolsNav.map((item) => (
           <NavItem key={item.label} {...item} collapsed={collapsed} />
         ))}
