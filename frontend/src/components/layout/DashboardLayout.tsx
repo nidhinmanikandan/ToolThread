@@ -10,16 +10,18 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     <div className="flex h-screen w-screen overflow-visible bg-background">
       <Sidebar />
 
-      <div
-        className="flex flex-1 flex-col overflow-visible"
-        style={{
-          paddingLeft: collapsed ? "92px" : "260px",
-          transition: "padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-        }}
-      >
+      <div className="flex flex-1 flex-col overflow-visible">
         <Topbar />
 
-        <main className="relative flex-1 min-h-screen overflow-visible px-8 pb-12">{children}</main>
+        <main
+          className="relative flex-1 min-h-screen overflow-visible px-8 pb-12"
+          style={{
+            paddingLeft: collapsed ? "92px" : "260px",
+            transition: "padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          }}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

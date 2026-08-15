@@ -39,13 +39,14 @@ export function Sidebar() {
         width: collapsed ? "72px" : "240px",
         transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
-      className="fixed left-[20px] top-auto bottom-[20px] z-30 flex h-auto flex-col rounded-[18px] px-4 py-6 overflow-hidden bg-transparent"
+      className="fixed left-[20px] top-auto bottom-[20px] z-30 flex h-fit flex-col rounded-[18px] px-4 py-6 overflow-hidden bg-transparent"
     >
       {/* Right-side separator line — fades away when collapsed */}
       <div
         className="pointer-events-none absolute right-0 top-[5%] h-[90%] w-px"
         style={{
-          background: "linear-gradient(to bottom, transparent, var(--border, rgba(255,255,255,0.08)) 20%, var(--border, rgba(255,255,255,0.08)) 80%, transparent)",
+          background:
+            "linear-gradient(to bottom, transparent, var(--border, rgba(255,255,255,0.08)) 20%, var(--border, rgba(255,255,255,0.08)) 80%, transparent)",
           opacity: collapsed ? 0 : 1,
           transition: "opacity 0.3s ease",
         }}
@@ -60,11 +61,7 @@ export function Sidebar() {
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-[var(--surface-dark-active)] hover:text-foreground"
         >
-          {collapsed ? (
-            <ChevronsRight className="h-4 w-4" />
-          ) : (
-            <ChevronsLeft className="h-4 w-4" />
-          )}
+          {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
         </button>
       </div>
 
@@ -100,11 +97,13 @@ function NavItem({
   to,
   collapsed,
 }: NavEntry & { active?: boolean; collapsed: boolean }) {
-  const itemClassName = `group relative flex items-center gap-4 rounded-2xl px-2 py-2.5 text-[14px] font-regular transition-colors ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-    }`;
+  const itemClassName = `group relative flex items-center gap-4 rounded-2xl px-2 py-2.5 text-[14px] font-regular transition-colors ${
+    active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+  }`;
 
-  const iconClassName = `flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)] transition-all ${active ? "opacity-100" : "opacity-70 hover:opacity-100"
-    }`;
+  const iconClassName = `flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)] transition-all ${
+    active ? "opacity-100" : "opacity-70 hover:opacity-100"
+  }`;
 
   const content = (
     <>
