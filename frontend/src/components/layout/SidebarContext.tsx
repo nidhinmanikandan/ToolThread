@@ -9,7 +9,7 @@ type SidebarCollapseContextType = {
 const SidebarCollapseContext = createContext<SidebarCollapseContextType | null>(null);
 
 export function SidebarCollapseProvider({ children }: { children: ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   return (
     <SidebarCollapseContext.Provider value={{ collapsed, setCollapsed }}>
       {children}
