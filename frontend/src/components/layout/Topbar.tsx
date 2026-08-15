@@ -5,15 +5,17 @@ export function Topbar() {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-20 flex h-auto py-4 items-center justify-between bg-background/80 backdrop-blur-xl px-12">
+    <header
+      className="sticky top-0 z-20 flex h-auto py-4 items-center justify-between bg-background/80 backdrop-blur-xl pr-[48px] pl-[48px]"
+      
+      
+    >
       {/* Top Left Logo & App Name */}
       <div className="flex items-center gap-2">
         <div className="flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)]">
           <Sparkles className="h-4 w-4 text-foreground" />
         </div>
-        <span className="text-[17px] font-bold tracking-tight text-foreground">
-          ToolThread
-        </span>
+        <span className="text-[17px] font-bold tracking-tight text-foreground">ToolThread</span>
       </div>
 
       <div className="flex items-center gap-4">
