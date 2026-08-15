@@ -3,3 +3,11 @@
   width: 100%;
   height: 100%;
 }
+
+/* Fade mask for when DotField is used as a background: fade out toward bottom */
+.dotfield-mask {
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0) 70%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0) 70%);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}

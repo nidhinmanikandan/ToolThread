@@ -9,7 +9,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
   return (
     <div className="relative flex h-screen w-screen overflow-visible bg-background">
-      <div className="absolute inset-0 z-0 pointer-events-none">
+      <div className="absolute inset-0 z-0 pointer-events-none dotfield-mask">
         <DotField
           dotRadius={1}
           dotSpacing={15}
