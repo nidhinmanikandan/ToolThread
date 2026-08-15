@@ -9,7 +9,6 @@ import {
   Settings,
   HelpCircle,
   MessageSquare,
-  Sparkles,
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
@@ -38,30 +37,22 @@ export function Sidebar() {
     <aside
       style={{
         width: collapsed ? "72px" : "240px",
-        backgroundColor: collapsed ? "transparent" : "var(--surface-dark)",
-        transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease",
+        transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
       className="fixed left-[20px] top-[20px] z-30 flex h-[calc(100vh-40px)] flex-col rounded-[18px] px-4 py-6 overflow-hidden"
     >
-      {/* Header: logo + toggle button */}
-      <div className="mb-8 flex items-center justify-between px-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)]">
-            <Sparkles className="h-4 w-4 text-foreground" />
-          </div>
-          <span
-            className="text-[15px] font-semibold tracking-tight text-foreground whitespace-nowrap overflow-hidden"
-            style={{
-              opacity: collapsed ? 0 : 1,
-              maxWidth: collapsed ? "0px" : "120px",
-              transition: "opacity 0.2s ease, max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-            }}
-          >
-            Logo
-          </span>
-        </div>
+      {/* Right-side separator line — fades away when collapsed */}
+      <div
+        className="pointer-events-none absolute right-0 top-[5%] h-[90%] w-px"
+        style={{
+          background: "linear-gradient(to bottom, transparent, var(--border, rgba(255,255,255,0.08)) 20%, var(--border, rgba(255,255,255,0.08)) 80%, transparent)",
+          opacity: collapsed ? 0 : 1,
+          transition: "opacity 0.3s ease",
+        }}
+      />
 
-        {/* Toggle button */}
+      {/* Toggle button — sits at top */}
+      <div className="mb-6 flex items-center justify-end px-1">
         <button
           id="sidebar-toggle-btn"
           onClick={() => setCollapsed((c) => !c)}
@@ -106,13 +97,11 @@ function NavItem({
   to,
   collapsed,
 }: NavEntry & { active?: boolean; collapsed: boolean }) {
-  const itemClassName = `group relative flex items-center gap-4 rounded-2xl px-2 py-2.5 text-[14px] font-regular transition-colors ${
-    active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-  }`;
+  const itemClassName = `group relative flex items-center gap-4 rounded-2xl px-2 py-2.5 text-[14px] font-regular transition-colors ${active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+    }`;
 
-  const iconClassName = `flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)] transition-all ${
-    active ? "opacity-100" : "opacity-70 hover:opacity-100"
-  }`;
+  const iconClassName = `flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)] transition-all ${active ? "opacity-100" : "opacity-70 hover:opacity-100"
+    }`;
 
   const content = (
     <>
