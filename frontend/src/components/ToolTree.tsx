@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
-  Background,
   MiniMap,
   addEdge,
   applyEdgeChanges,
@@ -213,7 +212,7 @@ export default function ToolTree({ roadmap }: Props) {
           [10000, 10000],
         ]}
       >
-        <Background gap={24} size={1} />
+        {/* Background grid/dot guides removed */}
 
         <MiniMap
           pannable
