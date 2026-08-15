@@ -20,8 +20,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           cursorRadius={500}
           cursorForce={0.1}
           bulgeOnly
-          gradientFrom="#A855F7"
-          gradientTo="#ff0000"
+          gradientFrom="#ffff"
+          gradientTo="#ffff"
           glowColor="#000000"
         />
       </div>

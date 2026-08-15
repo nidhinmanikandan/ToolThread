@@ -27,16 +27,16 @@ export function AiToolsPage() {
   return (
     <DashboardLayout>
       <section className="mb-[80px] mt-[64px] flex flex-col items-center justify-center text-center">
-        <h1 className="text-[48px] font-regular text-foreground tracking-[-0.04em] mb-4">
-          Discover AI Tools
+        <h1 className="text-[80px] font-regular text-foreground tracking-[-0.04em] mb-4 leading-[1.0] w-[600px]">
+          Discover Tools That Fit You.
         </h1>
 
-        <p className="text-[20px] text-[var(--text-soft-muted)] tracking-[-0.04em] mb-8 max-w-2xl">
+        {/* <p className="text-[20px] text-[var(--text-soft-muted)] tracking-[-0.04em] mb-8 max-w-[500px]">
           Explore trending tools and generate learning roadmaps for them.
-        </p>
+        </p> */}
 
         {/* Search Bar Container under Hero Heading */}
-        <div className="relative w-full max-w-[640px]">
+        <div className="relative w-full max-w-[500px] mt-[16px]">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <input
             type="text"
