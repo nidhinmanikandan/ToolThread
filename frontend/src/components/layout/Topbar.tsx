@@ -6,7 +6,7 @@ export function Topbar() {
 
   return (
     <header
-      className="sticky top-0 z-20 flex h-auto py-4 items-center justify-between bg-background/80 backdrop-blur-xl pr-[48px] pl-[48px]"
+      className="sticky top-0 z-20 flex h-auto py-4 items-center justify-between pr-[48px] pl-[48px]"
       
       
     >
