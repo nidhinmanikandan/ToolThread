@@ -5,9 +5,8 @@ export function Topbar() {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-20 flex h-20 items-center justify-end bg-background/80 backdrop-blur-xl px-8">
-
-      <div className="ml-auto flex items-center gap-4">
+    <header className="sticky top-0 z-20 flex h-auto py-4 items-center justify-end bg-background/80 backdrop-blur-xl px-12">
+      <div className="flex items-center gap-4">
         <button
           onClick={toggleTheme}
           aria-label="Toggle theme"
