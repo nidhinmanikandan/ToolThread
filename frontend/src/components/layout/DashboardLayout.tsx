@@ -8,8 +8,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const { collapsed } = useSidebarCollapse();
 
   return (
-    <div className="flex h-screen w-screen overflow-visible bg-background">
-      <div style={{ width: "100%", height: "600px", position: "relative" }}>
+    <div className="relative flex h-screen w-screen overflow-visible bg-background">
+      <div className="absolute inset-0 z-0 pointer-events-none">
         <DotField
           dotRadius={1}
           dotSpacing={15}
@@ -27,7 +27,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       </div>
       <Sidebar />
 
-      <div className="flex flex-1 flex-col overflow-visible">
+      <div className="relative z-10 flex flex-1 flex-col overflow-visible">
         <Topbar />
 
         <main
