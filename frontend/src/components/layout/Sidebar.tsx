@@ -39,7 +39,7 @@ export function Sidebar() {
         width: collapsed ? "72px" : "240px",
         transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
-      className="fixed left-[20px] top-[20px] z-30 flex h-auto flex-col rounded-[18px] px-4 py-6 overflow-hidden bg-transparent"
+      className="fixed left-[20px] top-auto bottom-[20px] z-30 flex h-auto flex-col rounded-[18px] px-4 py-6 overflow-hidden bg-transparent"
     >
       {/* Right-side separator line — fades away when collapsed */}
       <div
