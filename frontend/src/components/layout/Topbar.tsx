@@ -7,7 +7,7 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-20 flex h-auto py-4 items-center justify-between bg-background/80 backdrop-blur-xl px-12">
       {/* Top Left Logo & App Name */}
-      <div className="pl-[12px] flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <div className="flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)]">
           <Sparkles className="h-4 w-4 text-foreground" />
         </div>
