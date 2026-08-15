@@ -26,7 +26,7 @@ export function AiToolsPage() {
 
   return (
     <DashboardLayout>
-      <section className="mb-[80px] mt-[64px] flex flex-col items-center justify-center text-center">
+      <section className="mb-[32px] mt-[80px] flex flex-col items-center justify-center text-center">
         <h1 className="text-[80px] font-regular text-foreground tracking-[-0.04em] mb-4 leading-[1.0] w-[600px]">
           Discover Tools That Fit You.
         </h1>
