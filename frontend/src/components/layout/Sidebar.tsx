@@ -55,7 +55,9 @@ export function Sidebar() {
       />
 
       {/* Toggle button — sits at top */}
-      <div className={`${collapsed ? 'mb-4 flex items-center justify-center px-0' : 'mb-6 flex items-center justify-end px-1'}`}>
+      <div
+        className={`${collapsed ? "mb-4 flex items-center justify-center px-0" : "mb-6 flex items-center justify-end px-1"}`}
+      >
         <button
           id="sidebar-toggle-btn"
           onClick={() => setCollapsed((c) => !c)}
@@ -99,17 +101,17 @@ function NavItem({
   to,
   collapsed,
 }: NavEntry & { active?: boolean; collapsed: boolean }) {
-    const itemClassName = collapsed
-      ? `group relative flex items-center justify-center rounded-2xl p-1 text-[14px] font-regular transition-colors ${
-          active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-        }`
-      : `group relative flex items-center gap-4 rounded-2xl px-2 py-2.5 text-[14px] font-regular transition-colors ${
-          active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-        }`;
+  const itemClassName = collapsed
+    ? `group relative flex items-center justify-center rounded-2xl p-1 text-[14px] font-regular transition-colors ${
+        active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+      }`
+    : `group relative flex items-center gap-4 rounded-2xl px-2 py-2.5 text-[14px] font-regular transition-colors ${
+        active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+      }`;
 
-    const iconClassName = `flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)] transition-all ${
-      active ? "opacity-100" : "opacity-70 hover:opacity-100"
-    }`;
+  const iconClassName = `flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-[16px] bg-[var(--surface-dark-active)] transition-all ${
+    active ? "opacity-100" : "opacity-70 hover:opacity-100"
+  }`;
 
   const content = (
     <>
