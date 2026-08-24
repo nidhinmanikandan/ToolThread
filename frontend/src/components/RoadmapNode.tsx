@@ -26,20 +26,14 @@ export default function RoadmapNode({ data }: NodeProps<RoadmapNodeType>) {
           </div>
         </div>
 
-        <div className="content-card">
-          <div className="section">
-            <div className="steps">
-              {data.steps.map((step, index) => (
-                <div className="step" key={index}>
-                  <span className={`dot ${index === data.steps.length - 1 ? "green" : "blue"}`} />
+        <div className="steps">
+          {data.steps.map((step, index) => (
+            <div className="step" key={index}>
+              <span className={`dot ${index === data.steps.length - 1 ? "green" : "blue"}`} />
 
-                  {step}
-                </div>
-              ))}
+              {step}
             </div>
-          </div>
-
-          <div className="section why-section"></div>
+          ))}
         </div>
 
         <Handle type="source" position={Position.Right} className="handle" />

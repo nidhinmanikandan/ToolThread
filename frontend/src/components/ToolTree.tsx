@@ -217,11 +217,11 @@ export default function ToolTree({ roadmap }: Props) {
         <MiniMap
           pannable
           zoomable
-          position="bottom-right"
+          position="bottom-left"
           zoomStep={0.8}
           maskColor="rgba(0,0,0,.18)"
           bgColor="#181818"
-          style={{ position: "fixed", right: 24, bottom: 24, zIndex: 999, pointerEvents: "auto" }}
+          style={{ zIndex: 999, pointerEvents: "auto" ,bottom:100}}
         />
       </ReactFlow>
     </div>
