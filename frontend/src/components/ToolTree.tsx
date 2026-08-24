@@ -237,7 +237,7 @@ export default function ToolTree({ roadmap }: Props) {
           position="bottom-left"
           showFitView={false}
           showInteractive={false}
-          style={{ zIndex: 999, bottom: 100, left: 230 }}
+          style={{ zIndex: 999, bottom: 100, left: 232 }}
         />
 
         <MiniMap
@@ -247,7 +247,13 @@ export default function ToolTree({ roadmap }: Props) {
           zoomStep={0.8}
           maskColor="rgba(0,0,0,.18)"
           bgColor="#181818"
-          style={{ zIndex: 999, pointerEvents: "auto", bottom: 100 }}
+          style={{
+            zIndex: 999,
+            pointerEvents: "auto",
+            left: 24,
+            bottom: 100,
+            width: 200,
+          }}
         />
       </ReactFlow>
     </div>
