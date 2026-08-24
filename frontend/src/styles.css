@@ -160,9 +160,9 @@
   }
 }
 
-.roadmap-zoom-controls {
+.react-flow .roadmap-zoom-controls {
   display: flex;
-  flex-direction: row;
+  flex-direction: row !important;
   gap: 4px;
   padding: 0;
   background: transparent;
@@ -170,13 +170,13 @@
 }
 
 .roadmap-zoom-controls .react-flow__controls-button {
-  width: 32px;
-  height: 32px;
+  width: 16px;
+  height: 16px;
   margin: 0;
   padding: 0;
-  border: 1px solid #8a8a8a;
+  border: 1px solid #242424;
   border-radius: 4px;
-  background: #686868;
+  background: #121212;
   color: #ffffff;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.38),

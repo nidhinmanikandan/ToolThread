@@ -237,7 +237,7 @@ export default function ToolTree({ roadmap }: Props) {
           position="bottom-left"
           showFitView={false}
           showInteractive={false}
-          style={{ zIndex: 999, bottom: 24, left: 24 }}
+          style={{ zIndex: 999, bottom: 100, left: 230 }}
         />
 
         <MiniMap
