@@ -144,20 +144,26 @@ export default function ToolTree({ roadmap }: Props) {
   }, [roadmap]);
 
   const edges = useMemo<Edge[]>(() => {
+    const depths = computeDepths(roadmap);
+
     return roadmap.flatMap((item) => {
       const parents = item.parents ?? [];
-      return parents.map((parentId) => ({
-        id: `${parentId}-${item.id}`,
-        source: parentId,
-        target: item.id,
-        type: "default",
-        animated: false,
-        style: {
-          stroke: "#8A8A8A",
-          strokeWidth: 2.5,
-          strokeLinecap: "round",
-        },
-      }));
+      const targetDepth = depths.get(item.id) ?? 0;
+
+      return parents
+        .filter((parentId) => (depths.get(parentId) ?? 0) === targetDepth - 1)
+        .map((parentId) => ({
+          id: `${parentId}-${item.id}`,
+          source: parentId,
+          target: item.id,
+          type: "smoothstep",
+          animated: false,
+          style: {
+            stroke: "#8A8A8A",
+            strokeWidth: 2.5,
+            strokeLinecap: "round",
+          },
+        }));
     });
   }, [roadmap]);
 
@@ -177,9 +183,20 @@ export default function ToolTree({ roadmap }: Props) {
     setLayoutedEdges((eds) => applyEdgeChanges(changes, eds));
   }, []);
 
-  const onConnect = useCallback((connection: Connection) => {
-    setLayoutedEdges((eds) => addEdge(connection, eds));
-  }, []);
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      const depths = computeDepths(roadmap);
+      const sourceDepth = depths.get(connection.source) ?? 0;
+      const targetDepth = depths.get(connection.target) ?? 0;
+
+      if (targetDepth !== sourceDepth + 1) {
+        return;
+      }
+
+      setLayoutedEdges((eds) => addEdge({ ...connection, type: "smoothstep" }, eds));
+    },
+    [roadmap],
+  );
 
   return (
     <div className="absolute inset-0 overflow-visible">
@@ -221,7 +238,7 @@ export default function ToolTree({ roadmap }: Props) {
           zoomStep={0.8}
           maskColor="rgba(0,0,0,.18)"
           bgColor="#181818"
-          style={{ zIndex: 999, pointerEvents: "auto" ,bottom:100}}
+          style={{ zIndex: 999, pointerEvents: "auto", bottom: 100 }}
         />
       </ReactFlow>
     </div>
