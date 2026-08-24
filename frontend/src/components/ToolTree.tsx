@@ -233,6 +233,7 @@ export default function ToolTree({ roadmap }: Props) {
         {/* Background grid/dot guides removed */}
 
         <Controls
+          className="roadmap-zoom-controls"
           position="bottom-left"
           showFitView={false}
           showInteractive={false}
