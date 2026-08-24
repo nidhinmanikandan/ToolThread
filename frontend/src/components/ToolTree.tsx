@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
+  Controls,
   MiniMap,
   addEdge,
   applyEdgeChanges,
@@ -230,6 +231,13 @@ export default function ToolTree({ roadmap }: Props) {
         ]}
       >
         {/* Background grid/dot guides removed */}
+
+        <Controls
+          position="bottom-left"
+          showFitView={false}
+          showInteractive={false}
+          style={{ zIndex: 999, bottom: 24, left: 24 }}
+        />
 
         <MiniMap
           pannable
