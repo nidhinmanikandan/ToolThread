@@ -209,7 +209,7 @@ export default function ToolTree({ roadmap }: Props) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        defaultViewport={{ x: 0, y: 100, zoom: 0.4 }}
+        defaultViewport={{ x: 0, y: 50, zoom: 0.6 }}
         minZoom={0.5}
         maxZoom={2}
         nodesDraggable
