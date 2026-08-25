@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
+  Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   addEdge,
@@ -230,7 +232,12 @@ export default function ToolTree({ roadmap }: Props) {
           [10000, 10000],
         ]}
       >
-        {/* Background grid/dot guides removed */}
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={15}
+          size={1}
+          color="#5A5A5A"
+        />
 
         <Controls
           className="roadmap-zoom-controls"
