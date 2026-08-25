@@ -4,27 +4,35 @@ import { Topbar } from "./Topbar";
 import { SidebarCollapseProvider, useSidebarCollapse } from "./SidebarContext";
 import DotField from "../DotField";
 
-function DashboardLayoutInner({ children }: { children: ReactNode }) {
+function DashboardLayoutInner({
+  children,
+  showDotField,
+}: {
+  children: ReactNode;
+  showDotField: boolean;
+}) {
   const { collapsed } = useSidebarCollapse();
 
   return (
     <div className="relative flex h-screen w-screen overflow-visible bg-background">
-      <div className="absolute inset-0 z-0 pointer-events-none dotfield-mask">
-        <DotField
-          dotRadius={1}
-          dotSpacing={15}
-          bulgeStrength={67}
-          glowRadius={140}
-          sparkle
-          waveAmplitude={0}
-          cursorRadius={500}
-          cursorForce={0.1}
-          bulgeOnly
-          gradientFrom="#ffff"
-          gradientTo="#ffff"
-          glowColor="#000000"
-        />
-      </div>
+      {showDotField && (
+        <div className="dotfield-mask pointer-events-none absolute inset-0 z-0">
+          <DotField
+            dotRadius={1}
+            dotSpacing={15}
+            bulgeStrength={67}
+            glowRadius={140}
+            sparkle
+            waveAmplitude={0}
+            cursorRadius={500}
+            cursorForce={0.1}
+            bulgeOnly
+            gradientFrom="#ffff"
+            gradientTo="#ffff"
+            glowColor="#000000"
+          />
+        </div>
+      )}
       <Sidebar />
 
       <div className="relative z-10 flex flex-1 flex-col overflow-visible">
@@ -44,10 +52,16 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   );
 }
 
-export function DashboardLayout({ children }: { children: ReactNode }) {
+export function DashboardLayout({
+  children,
+  showDotField = false,
+}: {
+  children: ReactNode;
+  showDotField?: boolean;
+}) {
   return (
     <SidebarCollapseProvider>
-      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+      <DashboardLayoutInner showDotField={showDotField}>{children}</DashboardLayoutInner>
     </SidebarCollapseProvider>
   );
 }

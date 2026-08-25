@@ -25,8 +25,8 @@ export function AiToolsPage() {
   }, []);
 
   return (
-    <DashboardLayout>
-      <section className="mb-[32px] mt-[64px] flex flex-col items-center justify-center text-center">
+    <DashboardLayout showDotField>
+      <section className="relative z-10 mb-[32px] mt-[64px] flex flex-col items-center justify-center text-center">
         <h1 className="text-[80px] font-regular text-foreground tracking-[-0.04em] mb-4 leading-[1.0] w-[600px]">
           Discover Tools That Fit You.
         </h1>
@@ -36,12 +36,12 @@ export function AiToolsPage() {
         </p> */}
 
         {/* Search Bar Container under Hero Heading */}
-        <div className="relative w-full max-w-[500px] mt-[16px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+        <div className="relative mt-[16px] w-full max-w-[500px]">
+          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search AI tools, trends, technologies…"
-            className="w-full h-14 rounded-[20px] bg-[var(--surface-dark)] pl-12 pr-16 text-[15px] text-foreground placeholder:text-muted-foreground outline-none focus:bg-[var(--surface-dark-hover)] transition border border-[var(--border,rgba(255,255,255,0.08))]"
+            className="h-14 w-full rounded-[20px] border border-[var(--border,rgba(255,255,255,0.08))] bg-[var(--surface-dark)] pl-12 pr-16 text-[15px] text-foreground outline-none transition placeholder:text-muted-foreground focus:bg-[var(--surface-dark-hover)]"
           />
           <kbd className="absolute right-4 top-1/2 -translate-y-1/2 rounded-lg bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
             ⌘ K
@@ -49,7 +49,9 @@ export function AiToolsPage() {
         </div>
       </section>
 
-      <TrendingTools tools={tools} />
+      <div className="relative z-10">
+        <TrendingTools tools={tools} />
+      </div>
     </DashboardLayout>
   );
 }
