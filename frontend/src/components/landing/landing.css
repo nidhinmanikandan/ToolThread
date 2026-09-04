@@ -84,7 +84,7 @@
 .landing-hero {
   position: relative;
   display: grid;
-  min-height: 700px;
+  min-height: 100svh;
   place-items: center;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -94,14 +94,14 @@
   position: absolute;
   inset: 0;
   opacity: 0.8;
-  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.8) 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.8) 10%, transparent 100%);
+  height: 100vh;
 }
 .landing-hero-dots .dot-field-container,
 .landing-cta-dots .dot-field-container {
   height: 100%;
 }
 .landing-hero-content {
-  top: 50px;
   position: relative;
   z-index: 1;
   display: flex;
@@ -461,7 +461,7 @@
     display: none;
   }
   .landing-hero {
-    min-height: 620px;
+    min-height: 100svh;
   }
   .landing-hero-content {
     padding-top: 70px;

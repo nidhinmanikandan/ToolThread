@@ -7,7 +7,7 @@ export function Hero() {
     <section className="landing-hero">
       <div className="landing-hero-dots" aria-hidden="true">
         <DotField
-          dotRadius={1}
+          dotRadius={1.5}
           dotSpacing={15}
           bulgeStrength={67}
           glowRadius={140}

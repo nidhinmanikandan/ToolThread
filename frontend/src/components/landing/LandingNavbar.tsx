@@ -11,11 +11,11 @@ export function LandingNavbar() {
         <span>ToolThread</span>
       </Link>
 
-      <nav className="landing-nav-links" aria-label="Main navigation">
+      {/* <nav className="landing-nav-links" aria-label="Main navigation">
         <Link to="/discover">Discover</Link>
         <Link to="/roadmap">Roadmaps</Link>
         <Link to="/ai-tools">AI Tools</Link>
-      </nav>
+      </nav> */}
 
       <div className="landing-nav-actions">
         <Link to="/onboarding" className="landing-login">
