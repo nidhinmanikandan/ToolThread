@@ -31,8 +31,15 @@ function LandingPage() {
         <CTA />
       </main>
       <footer className="landing-footer">
-        <span>ToolThread</span>
-        <span>Make the path yours.</span>
+        <div className="landing-footer-links" aria-label="Footer navigation">
+          <a href="#about">About</a>
+          <a href="#workspace">Product</a>
+          <a href="#team">Team</a>
+          <a href="mailto:hello@toolthread.com">Contact</a>
+        </div>
+        <div className="landing-footer-brand" aria-label="ToolThread">
+          TOOLTHREAD
+        </div>
       </footer>
     </div>
   );
