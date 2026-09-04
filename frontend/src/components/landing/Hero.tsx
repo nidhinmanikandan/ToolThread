@@ -8,21 +8,22 @@ export function Hero() {
       <div className="landing-hero-dots" aria-hidden="true">
         <DotField
           dotRadius={1}
-          dotSpacing={16}
-          cursorRadius={420}
-          bulgeStrength={52}
-          gradientFrom="rgba(255,255,255,0.3)"
-          gradientTo="rgba(255,255,255,0.08)"
-          glowColor="#080808"
+          dotSpacing={15}
+          bulgeStrength={67}
+          glowRadius={140}
+          sparkle
+          waveAmplitude={0}
+          cursorRadius={500}
+          cursorForce={0.1}
+          bulgeOnly
+          gradientFrom="#ffff"
+          gradientTo="#ffff"
+          glowColor="#000000"
         />
       </div>
       <div className="landing-hero-content">
         <p className="landing-eyebrow">YOUR PATH. YOUR TOOLS.</p>
-        <h1>
-          Discover the tools
-          
-          that fit your path.
-        </h1>
+        <h1>Discover the tools that fit your path.</h1>
         <p className="landing-hero-copy">
           Explore technologies, understand how they connect, and build a roadmap that fits what you
           want to create.
