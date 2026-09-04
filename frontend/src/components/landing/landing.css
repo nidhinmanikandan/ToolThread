@@ -9,7 +9,7 @@
   position: fixed;
   top: 0;
   left: 50%;
-  width: min(100%, 1240px);
+  width: min(100%, 1440px);
   transform: translateX(-50%);
   box-sizing: border-box;
   z-index: 5;
@@ -19,7 +19,6 @@
   height: var(--landing-nav-height);
   padding: 26px 32px;
   background: transparent;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .landing-page main {
   padding-top: 0;
@@ -45,6 +44,9 @@
   height: 27px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
+}
+.toolthread-name {
+  font-size: 24px;
 }
 .landing-nav-links {
   display: flex;
@@ -443,6 +445,9 @@
   padding: 27px 32px;
   color: #666;
   font-size: 11px;
+}
+.toolthread {
+  font-size: 24px;
 }
 @media (max-width: 800px) {
   .landing-page {

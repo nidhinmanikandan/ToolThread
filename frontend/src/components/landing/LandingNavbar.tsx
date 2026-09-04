@@ -8,7 +8,7 @@ export function LandingNavbar() {
         <span className="landing-brand-mark">
           <Sparkles size={15} />
         </span>
-        <span>ToolThread</span>
+        <span className="toolthread-name">ToolThread</span>
       </Link>
 
       {/* <nav className="landing-nav-links" aria-label="Main navigation">
