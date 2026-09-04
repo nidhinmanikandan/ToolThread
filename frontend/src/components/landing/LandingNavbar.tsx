@@ -1,13 +1,15 @@
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import logo from "../../images/268a27df-230d-4153-b6fe-7504edfa1dc7.png";
 
 export function LandingNavbar() {
   return (
     <header className="landing-nav">
       <Link to="/" className="landing-brand" aria-label="ToolThread home">
         <span className="landing-brand-mark">
-          <img src="../../images/268a27df-230d-4153-b6fe-7504edfa1dc7.png" alt="logo" />
+          <img src={logo} alt="ToolThread logo" />
         </span>
+
         <span className="toolthread-name">ToolThread</span>
       </Link>
 
