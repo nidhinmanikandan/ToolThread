@@ -1,4 +1,4 @@
-import { ArrowUpRight, Sparkles } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 export function LandingNavbar() {
@@ -6,7 +6,7 @@ export function LandingNavbar() {
     <header className="landing-nav">
       <Link to="/" className="landing-brand" aria-label="ToolThread home">
         <span className="landing-brand-mark">
-          <Sparkles size={15} />
+          <img src="../../images/268a27df-230d-4153-b6fe-7504edfa1dc7.png" alt="logo" />
         </span>
         <span className="toolthread-name">ToolThread</span>
       </Link>
