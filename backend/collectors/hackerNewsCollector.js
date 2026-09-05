@@ -173,6 +173,7 @@ async function collectHackerNewsTools() {
         { upsert: true },
       );
       savedCount++;
+      console.log(story.title);
     }
 
     console.log(`Saved ${savedCount} Hacker News candidate tools.`);

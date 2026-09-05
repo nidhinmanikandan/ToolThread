@@ -89,6 +89,7 @@ async function collectNpmTools() {
     );
 
     savedCount++;
+    console.log(packageInfo.name);
   }
 
   console.log(`Saved ${savedCount} npm package candidates.`);
