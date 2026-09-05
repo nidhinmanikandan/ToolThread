@@ -9,7 +9,7 @@ async function validateCandidate(candidate) {
       { _id: candidate._id },
       {
         validationStatus: "rejected",
-      }
+      },
     );
     return;
   }
@@ -26,7 +26,7 @@ async function validateCandidate(candidate) {
       { _id: candidate._id },
       {
         validationStatus: "duplicate",
-      }
+      },
     );
 
     return;
@@ -35,11 +35,10 @@ async function validateCandidate(candidate) {
   const platforms = candidate.platforms?.length
     ? candidate.platforms
     : candidate.platform
-    ? [candidate.platform]
-    : [];
+      ? [candidate.platform]
+      : [];
 
-  const source =
-    candidate.source || candidate.sources?.[0]?.type || "unknown";
+  const source = candidate.source || candidate.sources?.[0]?.type || "unknown";
 
   // Save into Tool database
   await Tool.create({
@@ -62,7 +61,7 @@ async function validateCandidate(candidate) {
     { _id: candidate._id },
     {
       validationStatus: "validated",
-    }
+    },
   );
 
   console.log(candidate.name);
