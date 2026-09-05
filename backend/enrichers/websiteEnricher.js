@@ -13,6 +13,32 @@ module.exports = async function websiteEnricher() {
 
   for (const tool of tools) {
     try {
+      if (tool.source === "npm-search") {
+        const { data } = await axios.get(
+          `https://registry.npmjs.org/${encodeURIComponent(tool.name)}`,
+          {
+            timeout: 10000,
+            headers: {
+              Accept: "application/json",
+            },
+          },
+        );
+
+        tool.description = data.description || tool.description;
+
+        if (typeof data.homepage === "string" && data.homepage.trim()) {
+          tool.officialUrl = data.homepage.trim();
+        }
+
+        tool.enriched = true;
+        tool.lastChecked = new Date();
+
+        await tool.save();
+
+        console.log(`Enriched npm metadata: ${tool.name}`);
+        continue;
+      }
+
       const { data } = await axios.get(tool.officialUrl, {
         timeout: 10000,
         headers: {
@@ -24,8 +50,7 @@ module.exports = async function websiteEnricher() {
 
       const title = $("title").text().trim();
 
-      const description =
-        $('meta[name="description"]').attr("content") || "";
+      const description = $('meta[name="description"]').attr("content") || "";
 
       const logo =
         $('link[rel="icon"]').attr("href") ||
@@ -46,7 +71,6 @@ module.exports = async function websiteEnricher() {
     } catch (err) {
       console.log(`Failed to enrich ${tool.name}: ${err.message}`);
 
-      tool.enriched = true;
       tool.lastChecked = new Date();
       await tool.save();
     }
