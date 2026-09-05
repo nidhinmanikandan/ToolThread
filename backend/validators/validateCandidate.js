@@ -65,7 +65,7 @@ async function validateCandidate(candidate) {
     }
   );
 
-  console.log(`Validated: ${candidate.name}`);
+  console.log(candidate.name);
 }
 
 module.exports = validateCandidate;
