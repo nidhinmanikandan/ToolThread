@@ -1,4 +1,3 @@
-const Progress = require("../models/Progress");
 const mongoose = require("mongoose");
 
 const progressSchema = new mongoose.Schema({

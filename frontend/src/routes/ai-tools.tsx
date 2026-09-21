@@ -16,12 +16,9 @@ export function AiToolsPage() {
   const [tools, setTools] = useState<AiTool[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/recommendations")
-      .then((res) => res.json())
-      .then((data) => {
-        console.log(data);
-        setTools(data);
-      });
+    api.getTrendingTools().then((data) => {
+      setTools(data);
+    });
   }, []);
 
   return (

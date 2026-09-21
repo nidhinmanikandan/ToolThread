@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ToolCard } from "@/components/dashboard/ToolCard";
+import { api } from "@/services/api";
 
 export const Route = createFileRoute("/discover")({
   component: DiscoverPage,
@@ -12,11 +13,9 @@ function DiscoverPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/recommendations")
-      .then((res) => res.json())
-      .then((data) => {
-        setTools(data);
-      });
+    api.getFeed({ type: "popular", limit: 12 }).then((data) => {
+      setTools(data.tools || []);
+    });
   }, []);
 
   return (

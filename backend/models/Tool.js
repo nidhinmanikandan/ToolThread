@@ -130,4 +130,12 @@ const ToolSchema = new mongoose.Schema(
   },
 );
 
+// Feed Query Indexes
+ToolSchema.index({ validated: 1, createdAt: -1, _id: -1 });
+ToolSchema.index({ validated: 1, githubStars: -1, _id: -1 });
+ToolSchema.index({ validated: 1, isTrending: -1, score: -1, githubStars: -1, _id: -1 });
+ToolSchema.index({ validated: 1, category: 1, createdAt: -1, _id: -1 });
+ToolSchema.index({ validated: 1, category: 1, githubStars: -1, _id: -1 });
+ToolSchema.index({ validated: 1, category: 1, isTrending: -1, score: -1, githubStars: -1, _id: -1 });
+
 module.exports = mongoose.model("Tool", ToolSchema);

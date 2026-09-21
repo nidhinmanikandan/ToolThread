@@ -19,9 +19,21 @@ import type { AiTool } from "@/types";
 const delay = <T>(data: T, ms = 0): Promise<T> => new Promise((r) => setTimeout(() => r(data), ms));
 
 export const api = {
-  getTrendingTools: async () => {
-    const res = await fetch(`${BASE_URL}/api/tools`);
+  getFeed: async (params?: { type?: string; category?: string; limit?: number; cursor?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.type) searchParams.set("type", params.type);
+    if (params?.category) searchParams.set("category", params.category);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.cursor) searchParams.set("cursor", params.cursor);
+
+    const queryString = searchParams.toString();
+    const url = `${BASE_URL}/api/feed${queryString ? `?${queryString}` : ""}`;
+    const res = await fetch(url);
     return res.json();
+  },
+  getTrendingTools: async () => {
+    const data = await api.getFeed({ type: "trending", limit: 12 });
+    return data.tools || [];
   },
   getTodayInsight: () => delay(todayInsight),
   getRoadmap: async () => {
@@ -166,9 +178,8 @@ export const api = {
   },
 
   getTools: async () => {
-    const response = await fetch(`${BASE_URL}/api/tools`);
-
-    return response.json();
+    const data = await api.getFeed({ type: "popular", limit: 50 });
+    return data.tools || [];
   },
 
   async getToolRoadmap(tool: AiTool) {

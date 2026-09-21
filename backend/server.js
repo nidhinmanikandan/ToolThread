@@ -31,6 +31,8 @@ const User = require("./models/User");
 
 const recommendationRoutes = require("./routes/recommendations");
 
+const feedRoutes = require("./routes/feed");
+
 // Create the Express application instance
 const app = express();
 
@@ -38,6 +40,8 @@ const app = express();
 app.use(cors());
 
 app.use(express.json());
+
+app.use("/api/feed", feedRoutes);
 
 app.use("/api/career", careerRoutes);
 
