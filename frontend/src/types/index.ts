@@ -6,6 +6,8 @@ export interface AiTool {
   logoDomain?: string;
   logo?: string;
   isTrending?: boolean;
+  tags?: string[];
+  githubStars?: number;
 
   // Optional UI fields (for old data)
   id?: string;

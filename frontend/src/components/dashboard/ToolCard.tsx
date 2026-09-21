@@ -8,6 +8,16 @@ type ToolCardProps = {
 };
 
 export function ToolCard({ tool, onClick }: ToolCardProps) {
+  const logoDomain = tool.logoDomain || "github.com";
+  const displayTag = tool.tag || (tool.tags && tool.tags.length > 0 ? tool.tags[0] : tool.category || "AI");
+  const displayPopularity =
+    tool.popularity ||
+    (tool.githubStars
+      ? tool.githubStars >= 1000
+        ? `${(tool.githubStars / 1000).toFixed(1)}k ⭐`
+        : `${tool.githubStars} ⭐`
+      : "");
+
   return (
     <motion.div
       onClick={onClick}
@@ -18,7 +28,7 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
       <div className="flex items-start gap-2">
         <div className="h-11 w-11 rounded-xl bg-[var(--surface-dark)] flex items-center justify-center">
           <img
-            src={`https://www.google.com/s2/favicons?sz=128&domain=${tool.logoDomain}`}
+            src={`https://www.google.com/s2/favicons?sz=128&domain=${logoDomain}`}
             alt={tool.name}
             className="w-10 h-10 rounded-md"
           />
@@ -45,11 +55,11 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
             </p>
           </div>
           <span className="inline-block mt-2 text-[11px] text-[var(--text-soft-muted)]">
-            #{tool.tag}
+            #{displayTag}
           </span>
         </div>
         <div className="flex items-center gap-1 text-[12px] font-medium text-foreground">
-          {tool.popularity}
+          {displayPopularity}
           <span className="inline-block mt-2 text-[10px] font-light pb-1">Learn More</span>
           <ArrowRight className="h-3 w-3 text-foreground" />
         </div>
