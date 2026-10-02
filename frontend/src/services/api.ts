@@ -19,9 +19,10 @@ import type { AiTool } from "@/types";
 const delay = <T>(data: T, ms = 0): Promise<T> => new Promise((r) => setTimeout(() => r(data), ms));
 
 export const api = {
-  getFeed: async (params?: { type?: string; category?: string; limit?: number; cursor?: string }) => {
+  getFeed: async (params?: { type?: string; role?: string; category?: string; limit?: number; cursor?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.type) searchParams.set("type", params.type);
+    if (params?.role) searchParams.set("role", params.role);
     if (params?.category) searchParams.set("category", params.category);
     if (params?.limit) searchParams.set("limit", String(params.limit));
     if (params?.cursor) searchParams.set("cursor", params.cursor);
@@ -31,8 +32,8 @@ export const api = {
     const res = await fetch(url);
     return res.json();
   },
-  getTrendingTools: async () => {
-    const data = await api.getFeed({ type: "trending", limit: 12 });
+  getTrendingTools: async (role?: string) => {
+    const data = await api.getFeed({ type: "for_you", role, limit: 12 });
     return data.tools || [];
   },
   getTodayInsight: () => delay(todayInsight),

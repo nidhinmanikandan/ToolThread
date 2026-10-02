@@ -4,10 +4,11 @@ const { getFeed } = require("../services/feedService");
 
 router.get("/", async (req, res) => {
   try {
-    const { type, category, limit, cursor } = req.query;
+    const { type, role, category, limit, cursor } = req.query;
 
     const result = await getFeed({
       type,
+      role,
       category,
       limit,
       cursor,

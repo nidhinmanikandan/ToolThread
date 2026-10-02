@@ -16,9 +16,25 @@ export function AiToolsPage() {
   const [tools, setTools] = useState<AiTool[]>([]);
 
   useEffect(() => {
-    api.getTrendingTools().then((data) => {
-      setTools(data);
-    });
+    async function loadFeed() {
+      try {
+        const state = await api.getCareerGoalState();
+        const role =
+          state?.selected === "frontend"
+            ? "Frontend Developer"
+            : state?.selected === "uiux"
+              ? "UI/UX Designer"
+              : state?.selected === "mobile"
+                ? "Mobile Developer"
+                : "AI / ML Engineer";
+        const data = await api.getTrendingTools(role);
+        setTools(data);
+      } catch {
+        const data = await api.getTrendingTools();
+        setTools(data);
+      }
+    }
+    loadFeed();
   }, []);
 
   return (

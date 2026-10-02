@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "motion/react";
 import { Bookmark, ArrowRight } from "lucide-react";
 import type { AiTool } from "@/types";
@@ -8,7 +9,24 @@ type ToolCardProps = {
 };
 
 export function ToolCard({ tool, onClick }: ToolCardProps) {
-  const logoDomain = tool.logoDomain || "github.com";
+  const [imgError, setImgError] = useState(false);
+
+  let domain = tool.logoDomain;
+  if (!domain || domain === "github.com" || domain === "npmjs.com") {
+    if (tool.officialUrl) {
+      try {
+        const parsed = new URL(tool.officialUrl);
+        const host = parsed.hostname.replace(/^www\./, "");
+        if (host && host !== "github.com" && host !== "npmjs.com") {
+          domain = host;
+        }
+      } catch {}
+    }
+  }
+
+  const logoSrc = tool.logo || (domain ? `https://www.google.com/s2/favicons?sz=128&domain=${domain}` : null);
+  const initialLetter = tool.name ? tool.name.charAt(0).toUpperCase() : "T";
+
   const displayTag = tool.tag || (tool.tags && tool.tags.length > 0 ? tool.tags[0] : tool.category || "AI");
   const displayPopularity =
     tool.popularity ||
@@ -18,6 +36,12 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
         : `${tool.githubStars} ⭐`
       : "");
 
+  const rawDescription = tool.description || "";
+  const shortDescription =
+    rawDescription.length > 105
+      ? `${rawDescription.slice(0, 102).trim()}...`
+      : rawDescription;
+
   return (
     <motion.div
       onClick={onClick}
@@ -26,17 +50,22 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
       className="rounded-2xl bg-[var(--surface-dark)] p-[20px] hover:bg-[var(--surface-dark-hover)] transition cursor-pointer group"
     >
       <div className="flex items-start gap-2">
-        <div className="h-11 w-11 rounded-xl bg-[var(--surface-dark)] flex items-center justify-center">
-          <img
-            src={`https://www.google.com/s2/favicons?sz=128&domain=${logoDomain}`}
-            alt={tool.name}
-            className="w-10 h-10 rounded-md"
-          />
+        <div className="h-11 w-11 rounded-xl bg-[var(--surface-dark-hover)] flex items-center justify-center shrink-0 border border-border/40 overflow-hidden">
+          {logoSrc && !imgError ? (
+            <img
+              src={logoSrc}
+              alt={`${tool.name} logo`}
+              className="w-8 h-8 rounded-md object-contain"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <span className="text-base font-semibold text-foreground">{initialLetter}</span>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-[16px] font-semibold text-foreground">{tool.name}</h3>
+              <h3 className="text-[16px] font-semibold text-foreground truncate max-w-[180px]">{tool.name}</h3>
               <span className="inline-block mt-1 rounded-md bg-[var(--surface-dark-hover)] px-2 py-0.5 text-[10px] font-light">
                 {tool.category}
               </span>
@@ -49,16 +78,16 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
       </div>
       <div className="mt-3 flex items-end justify-between gap-3">
         <div className="flex-1">
-          <div className="flex h-[64px] justify-start">
-            <p className="text-[12px] text-[var(--text-soft-muted)] leading-snug tracking-[-0.04] font-regular">
-              {tool.description}
+          <div className="flex h-[44px] items-start justify-start overflow-hidden">
+            <p className="text-[12px] text-[var(--text-soft-muted)] leading-snug tracking-[-0.04] font-regular line-clamp-2">
+              {shortDescription}
             </p>
           </div>
-          <span className="inline-block mt-2 text-[11px] text-[var(--text-soft-muted)]">
+          <span className="inline-block mt-2 text-[11px] text-[var(--text-soft-muted)] truncate max-w-[140px]">
             #{displayTag}
           </span>
         </div>
-        <div className="flex items-center gap-1 text-[12px] font-medium text-foreground">
+        <div className="flex items-center gap-1 text-[12px] font-medium text-foreground shrink-0">
           {displayPopularity}
           <span className="inline-block mt-2 text-[10px] font-light pb-1">Learn More</span>
           <ArrowRight className="h-3 w-3 text-foreground" />
