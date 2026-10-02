@@ -33,6 +33,8 @@ const recommendationRoutes = require("./routes/recommendations");
 
 const feedRoutes = require("./routes/feed");
 
+const logoFaviconRoute = require("./routes/logoFavicon");
+
 // Create the Express application instance
 const app = express();
 
@@ -42,6 +44,8 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/feed", feedRoutes);
+
+app.use("/api/logo-favicon", logoFaviconRoute);
 
 app.use("/api/career", careerRoutes);
 

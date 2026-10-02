@@ -8,6 +8,29 @@ type ToolCardProps = {
   onClick?: () => void;
 };
 
+const BACKEND_URL = "http://localhost:5000";
+
+function getFallbackLogoColor(seed: string) {
+  const hash = Array.from(seed).reduce(
+    (value, character) => value * 31 + character.charCodeAt(0),
+    0,
+  );
+  const hue = ((hash % 360) + 360) % 360;
+  const saturation = 0.68;
+  const lightness = 0.58;
+  const channel = (offset: number) => {
+    const normalizedHue = (offset + hue / 30) % 12;
+    const chroma = saturation * Math.min(lightness, 1 - lightness);
+    const value =
+      lightness - chroma * Math.max(-1, Math.min(normalizedHue - 3, 9 - normalizedHue, 1));
+    return Math.round(value * 255)
+      .toString(16)
+      .padStart(2, "0");
+  };
+
+  return `#${channel(0)}${channel(8)}${channel(4)}`;
+}
+
 async function getLogoColor(imageUrl: string): Promise<string | null> {
   try {
     const response = await fetch(imageUrl);
@@ -70,7 +93,9 @@ async function getLogoColor(imageUrl: string): Promise<string | null> {
 
 export function ToolCard({ tool, onClick }: ToolCardProps) {
   const [imgError, setImgError] = useState(false);
-  const [logoColor, setLogoColor] = useState("#a0a0a0");
+  const [logoColor, setLogoColor] = useState(() =>
+    getFallbackLogoColor(`${tool.name} ${tool.officialUrl}`),
+  );
 
   let domain = tool.logoDomain;
   if (!domain || domain === "github.com" || domain === "npmjs.com") {
@@ -89,6 +114,9 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
 
   const logoSrc =
     tool.logo || (domain ? `https://www.google.com/s2/favicons?sz=128&domain=${domain}` : null);
+  const colorSampleSrc = domain
+    ? `${BACKEND_URL}/api/logo-favicon?domain=${encodeURIComponent(domain)}`
+    : logoSrc;
   const initialLetter = tool.name ? tool.name.charAt(0).toUpperCase() : "T";
 
   const displayTag =
@@ -121,7 +149,8 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
               className="h-11 w-11 rounded-[10px] object-contain"
               style={{ boxShadow: `0 8px 34px ${logoColor}33` }}
               onLoad={(event) => {
-                void getLogoColor(event.currentTarget.currentSrc).then((color) => {
+                const sampleUrl = colorSampleSrc || event.currentTarget.currentSrc;
+                void getLogoColor(sampleUrl).then((color) => {
                   if (color) setLogoColor(color);
                 });
               }}
