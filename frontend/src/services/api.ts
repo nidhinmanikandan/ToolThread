@@ -19,7 +19,13 @@ import type { AiTool } from "@/types";
 const delay = <T>(data: T, ms = 0): Promise<T> => new Promise((r) => setTimeout(() => r(data), ms));
 
 export const api = {
-  getFeed: async (params?: { type?: string; role?: string; category?: string; limit?: number; cursor?: string }) => {
+  getFeed: async (params?: {
+    type?: string;
+    role?: string;
+    category?: string;
+    limit?: number;
+    cursor?: string;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.type) searchParams.set("type", params.type);
     if (params?.role) searchParams.set("role", params.role);
@@ -31,6 +37,15 @@ export const api = {
     const url = `${BASE_URL}/api/feed${queryString ? `?${queryString}` : ""}`;
     const res = await fetch(url);
     return res.json();
+  },
+  getRecommendations: async (): Promise<AiTool[]> => {
+    const response = await fetch(`${BASE_URL}/api/recommendations`);
+    if (!response.ok) {
+      throw new Error(`Recommendations request failed (${response.status})`);
+    }
+
+    const recommendations: unknown = await response.json();
+    return Array.isArray(recommendations) ? recommendations : [];
   },
   getTrendingTools: async (role?: string) => {
     const data = await api.getFeed({ type: "for_you", role, limit: 12 });

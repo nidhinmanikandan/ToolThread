@@ -16,25 +16,20 @@ export function AiToolsPage() {
   const [tools, setTools] = useState<AiTool[]>([]);
 
   useEffect(() => {
-    async function loadFeed() {
-      try {
-        const state = await api.getCareerGoalState();
-        const role =
-          state?.selected === "frontend"
-            ? "Frontend Developer"
-            : state?.selected === "uiux"
-              ? "UI/UX Designer"
-              : state?.selected === "mobile"
-                ? "Mobile Developer"
-                : "AI / ML Engineer";
-        const data = await api.getTrendingTools(role);
-        setTools(data);
-      } catch {
-        const data = await api.getTrendingTools();
-        setTools(data);
-      }
-    }
-    loadFeed();
+    let isActive = true;
+
+    api
+      .getRecommendations()
+      .then((recommendations) => {
+        if (isActive) setTools(recommendations);
+      })
+      .catch((error) => {
+        console.error("Failed to load Gemini tool recommendations:", error);
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   return (
