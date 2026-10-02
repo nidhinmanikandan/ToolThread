@@ -10,44 +10,15 @@ type ToolCardProps = {
 
 const BACKEND_URL = "http://localhost:5000";
 
-function getFallbackLogoColor(seed: string) {
-  const hash = Array.from(seed).reduce(
-    (value, character) => value * 31 + character.charCodeAt(0),
-    0,
-  );
-  const hue = ((hash % 360) + 360) % 360;
-  const saturation = 0.68;
-  const lightness = 0.58;
-  const channel = (offset: number) => {
-    const normalizedHue = (offset + hue / 30) % 12;
-    const chroma = saturation * Math.min(lightness, 1 - lightness);
-    const value =
-      lightness - chroma * Math.max(-1, Math.min(normalizedHue - 3, 9 - normalizedHue, 1));
-    return Math.round(value * 255)
-      .toString(16)
-      .padStart(2, "0");
-  };
-
-  return `#${channel(0)}${channel(8)}${channel(4)}`;
-}
-
-async function getLogoColor(imageUrl: string): Promise<string | null> {
+function getLogoColor(imageElement: HTMLImageElement): string | null {
   try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) return null;
-
-    const image = await createImageBitmap(await response.blob());
     const canvas = document.createElement("canvas");
     canvas.width = 32;
     canvas.height = 32;
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) {
-      image.close();
-      return null;
-    }
+    if (!context) return null;
 
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    image.close();
+    context.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
 
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
     const hueBuckets = Array.from({ length: 24 }, () => ({ weight: 0, red: 0, green: 0, blue: 0 }));
@@ -93,9 +64,7 @@ async function getLogoColor(imageUrl: string): Promise<string | null> {
 
 export function ToolCard({ tool, onClick }: ToolCardProps) {
   const [imgError, setImgError] = useState(false);
-  const [logoColor, setLogoColor] = useState(() =>
-    getFallbackLogoColor(`${tool.name} ${tool.officialUrl}`),
-  );
+  const [logoColor, setLogoColor] = useState<string | null>(null);
 
   let domain = tool.logoDomain;
   if (!domain || domain === "github.com" || domain === "npmjs.com") {
@@ -112,11 +81,10 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
     }
   }
 
-  const logoSrc =
-    tool.logo || (domain ? `https://www.google.com/s2/favicons?sz=128&domain=${domain}` : null);
-  const colorSampleSrc = domain
+  const faviconSrc = domain
     ? `${BACKEND_URL}/api/logo-favicon?domain=${encodeURIComponent(domain)}`
-    : logoSrc;
+    : null;
+  const logoSrc = tool.logo || faviconSrc;
   const initialLetter = tool.name ? tool.name.charAt(0).toUpperCase() : "T";
 
   const displayTag =
@@ -147,12 +115,10 @@ export function ToolCard({ tool, onClick }: ToolCardProps) {
               src={logoSrc}
               alt={`${tool.name} logo`}
               className="h-11 w-11 rounded-[10px] object-contain"
-              style={{ boxShadow: `0 8px 34px ${logoColor}33` }}
+              crossOrigin="anonymous"
+              style={logoColor ? { boxShadow: `0 8px 52px ${logoColor}33` } : undefined}
               onLoad={(event) => {
-                const sampleUrl = colorSampleSrc || event.currentTarget.currentSrc;
-                void getLogoColor(sampleUrl).then((color) => {
-                  if (color) setLogoColor(color);
-                });
+                setLogoColor(getLogoColor(event.currentTarget));
               }}
               onError={() => setImgError(true)}
             />
