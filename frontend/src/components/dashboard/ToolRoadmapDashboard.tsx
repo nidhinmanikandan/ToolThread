@@ -1,10 +1,11 @@
 import ToolTree from "../ToolTree";
+import type { ToolRoadmap } from "@/types/roadmap";
 
 type Props = {
-  tool: any;
+  tool: ToolRoadmap;
 };
 
-function getLogoSrc(tool: any) {
+function getLogoSrc(tool: ToolRoadmap) {
   if (tool?.logoDomain) {
     return `https://www.google.com/s2/favicons?sz=128&domain=${tool.logoDomain}`;
   }
@@ -22,7 +23,7 @@ export function ToolRoadmapDashboard({ tool }: Props) {
   return (
     <div className="relative flex h-full min-h-screen w-full overflow-visible">
       <div className="absolute inset-0 z-0 overflow-visible">
-        <ToolTree roadmap={tool.roadmap} />
+        <ToolTree tool={tool} />
       </div>
 
       <div className="relative z-10 flex h-full w-full flex-col gap-8 overflow-visible pointer-events-none">
