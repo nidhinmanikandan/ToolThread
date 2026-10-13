@@ -107,6 +107,17 @@ function addEndpointNodes(roadmap: RoadmapItem[], tool: ToolRoadmap): RoadmapIte
       parents: [lastNode.id],
     },
   ].map((item) => {
+    if (item.id === startId) {
+      return {
+        ...item,
+        logoSrc:
+          tool.logo ||
+          (tool.logoDomain
+            ? `https://www.google.com/s2/favicons?sz=128&domain=${encodeURIComponent(tool.logoDomain)}`
+            : undefined),
+      };
+    }
+
     if (item.id === endId) {
       return {
         ...item,

@@ -9,12 +9,25 @@ export default function RoadmapNode({ data }: NodeProps<RoadmapNodeType>) {
 
   return (
     <div className={`node-wrapper${isEndpoint ? " node-wrapper--endpoint" : ""}`}>
-      <div className={`roadmap-node${isEndpoint ? " roadmap-node--endpoint" : ""}`}>
+      <div
+        className={`roadmap-node${isEndpoint ? " roadmap-node--endpoint" : ""}${
+          kind === "start" ? " roadmap-node--start" : ""
+        }`}
+      >
         {kind !== "start" && <Handle type="target" position={Position.Left} className="handle" />}
 
         {kind === "start" ? (
           <div className="endpoint-content roadmap-start-content">
-            <h3>{data.title}</h3>
+            <div className="roadmap-start-brand">
+              <div className="roadmap-start-logo">
+                {data.logoSrc ? (
+                  <img src={data.logoSrc} alt={`${data.title} logo`} />
+                ) : (
+                  <span>{data.title.charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+              <h3>{data.title}</h3>
+            </div>
           </div>
         ) : kind === "end" ? (
           <div className="endpoint-content roadmap-end-content">
