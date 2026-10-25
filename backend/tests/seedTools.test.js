@@ -1,7 +1,14 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const toolsByRole = require("../data/tools");
-const { collectSeedTools, seedTools } = require("../scripts/seedTools");
+const {
+  collectSeedTools,
+  getEnvFilePath,
+  loadEnvironment,
+  run,
+  seedTools,
+} = require("../scripts/seedTools");
 
 function createToolModel(initialRecords = []) {
   const records = new Map(initialRecords.map((record) => [record.name, structuredClone(record)]));
@@ -85,4 +92,83 @@ test("repeated seed execution is idempotent and only adds missing role keywords 
     collectSeedTools(toolsByRole).filter((tool) => tool.name === "Framer").length,
     1,
   );
+});
+
+test("environment loading prefers repository .env and falls back to backend .env", () => {
+  const loadedPaths = [];
+  const repositoryEnv = getEnvFilePath(() => true);
+  const backendEnv = getEnvFilePath((candidate) => candidate.endsWith(`${path.sep}backend${path.sep}.env`));
+  const config = ({ path: envPath }) => loadedPaths.push(envPath);
+
+  assert.ok(repositoryEnv.endsWith(`${path.sep}.env`));
+  assert.ok(!repositoryEnv.endsWith(`${path.sep}backend${path.sep}.env`));
+  assert.ok(backendEnv.endsWith(`${path.sep}backend${path.sep}.env`));
+  assert.equal(loadEnvironment({ config, existsSync: (candidate) => candidate === backendEnv }), backendEnv);
+  assert.deepEqual(loadedPaths, [backendEnv]);
+});
+
+test("seed run attempts MongoDB cleanup if the connection fails", async () => {
+  const previousUri = process.env.MONGO_URI;
+  let disconnected = false;
+  const logs = [];
+
+  process.env.MONGO_URI = "mongodb://example.invalid/test";
+  try {
+    await assert.rejects(
+      run({
+        loadEnv() {},
+        async connect() {
+          throw new Error("mock connection failure");
+        },
+        async disconnect() {
+          disconnected = true;
+        },
+        logger: {
+          log(message) {
+            logs.push(message);
+          },
+          error(message) {
+            logs.push(message);
+          },
+        },
+      }),
+      /mock connection failure/,
+    );
+    assert.equal(disconnected, true);
+    assert.deepEqual(logs, ["MONGO_URI configured: yes"]);
+    assert.ok(!logs.some((message) => message.includes(process.env.MONGO_URI)));
+  } finally {
+    if (previousUri === undefined) delete process.env.MONGO_URI;
+    else process.env.MONGO_URI = previousUri;
+  }
+});
+
+test("seed run reports missing MongoDB configuration without connecting", async () => {
+  const previousUri = process.env.MONGO_URI;
+  let connected = false;
+  let diagnostic = "";
+
+  delete process.env.MONGO_URI;
+  try {
+    await assert.rejects(
+      run({
+        loadEnv() {},
+        async connect() {
+          connected = true;
+        },
+        logger: {
+          log(message) {
+            diagnostic = message;
+          },
+          error() {},
+        },
+      }),
+      /MONGO_URI is not configured/,
+    );
+    assert.equal(diagnostic, "MONGO_URI configured: no");
+    assert.equal(connected, false);
+  } finally {
+    if (previousUri === undefined) delete process.env.MONGO_URI;
+    else process.env.MONGO_URI = previousUri;
+  }
 });

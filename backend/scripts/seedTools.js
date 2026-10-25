@@ -1,7 +1,29 @@
+const fs = require("fs");
 const path = require("path");
+const dotenv = require("dotenv");
 const mongoose = require("mongoose");
 const toolsByRole = require("../data/tools");
 const Tool = require("../models/Tool");
+
+const ENV_PATHS = [
+  path.resolve(__dirname, "../../.env"),
+  path.resolve(__dirname, "../.env"),
+];
+
+function getEnvFilePath(existsSync = fs.existsSync) {
+  return ENV_PATHS.find((envPath) => existsSync(envPath));
+}
+
+function loadEnvironment({ config = dotenv.config, existsSync = fs.existsSync } = {}) {
+  const envPath = getEnvFilePath(existsSync);
+  if (envPath) {
+    const result = config({ path: envPath });
+    if (result.error) {
+      throw result.error;
+    }
+  }
+  return envPath;
+}
 
 function collectSeedTools(seedData) {
   const uniqueTools = new Map();
@@ -72,31 +94,55 @@ async function seedTools({ ToolModel = Tool, seedData = toolsByRole } = {}) {
   };
 }
 
-async function run() {
-  require("dotenv").config({
-    path: path.resolve(__dirname, "../../.env"),
-  });
-  const connectDB = require("../config/db");
+async function run({
+  loadEnv = loadEnvironment,
+  connect,
+  disconnect,
+  ToolModel = Tool,
+  logger = console,
+} = {}) {
+  loadEnv();
+  const mongoUri = process.env.MONGO_URI;
+  logger.log(`MONGO_URI configured: ${mongoUri ? "yes" : "no"}`);
+  if (!mongoUri) {
+    throw new Error("MONGO_URI is not configured");
+  }
 
-  await connectDB();
+  const connectDB = connect || require("../config/db");
+  const disconnectDB = disconnect || (() => mongoose.disconnect());
+  let seedFailed = false;
   try {
-    const result = await seedTools();
-    console.log(
+    await connectDB();
+    const result = await seedTools({ ToolModel });
+    logger.log(
       `Seed complete: ${result.inserted} inserted, ${result.alreadyPresent} already present.`,
     );
+  } catch (error) {
+    seedFailed = true;
+    throw error;
   } finally {
-    await mongoose.disconnect();
+    try {
+      await disconnectDB();
+    } catch (error) {
+      logger.error("MongoDB disconnect failed.");
+      if (!seedFailed) {
+        throw error;
+      }
+    }
   }
 }
 
 if (require.main === module) {
-  run().catch((error) => {
-    console.error("Tool seed failed:", error.message);
+  run().catch(() => {
+    console.error("Tool seed failed. Check MONGO_URI configuration and MongoDB connectivity.");
     process.exitCode = 1;
   });
 }
 
 module.exports = {
   collectSeedTools,
+  getEnvFilePath,
+  loadEnvironment,
+  run,
   seedTools,
 };
