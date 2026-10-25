@@ -74,8 +74,9 @@ async function seedTools({ ToolModel = Tool, seedData = toolsByRole } = {}) {
 
   for (const record of records) {
     const { searchKeywords, ...insertOnlyFields } = record;
+    const escapedName = record.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const result = await ToolModel.updateOne(
-      { name: record.name },
+      { name: { $regex: `^${escapedName}$`, $options: "i" } },
       {
         $setOnInsert: insertOnlyFields,
         $addToSet: {

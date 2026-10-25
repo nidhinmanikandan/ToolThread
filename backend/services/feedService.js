@@ -71,13 +71,15 @@ const ROLE_ALIASES = {
 };
 
 function matchKeywords(tool, keywords) {
+  const strings = (value) =>
+    Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
   const searchableText = [
-    tool.name || "",
-    tool.category || "",
-    tool.description || "",
-    ...(tool.tags || []),
-    ...(tool.platforms || []),
-    ...(tool.searchKeywords || [])
+    typeof tool.name === "string" ? tool.name : "",
+    typeof tool.category === "string" ? tool.category : "",
+    typeof tool.description === "string" ? tool.description : "",
+    ...strings(tool.tags),
+    ...strings(tool.platforms),
+    ...strings(tool.searchKeywords),
   ].join(" ").toLowerCase();
 
   let matches = 0;
@@ -94,9 +96,10 @@ function matchKeywords(tool, keywords) {
 }
 
 function calculateRoleRelevance(tool, roleStr) {
-  if (!roleStr) return 0.5;
+  if (typeof roleStr !== "string" || !roleStr.trim()) return 0.5;
   const normalizedRole = String(roleStr).toLowerCase().trim().replace(/\s+/g, " ");
-  const taggedRoles = (tool.searchKeywords || [])
+  const taggedRoles = (Array.isArray(tool.searchKeywords) ? tool.searchKeywords : [])
+    .filter((keyword) => typeof keyword === "string")
     .filter((keyword) => keyword.startsWith("role:"))
     .map((keyword) => keyword.slice("role:".length).trim());
   const roleAliases = ROLE_ALIASES[normalizedRole] || [normalizedRole];
@@ -119,13 +122,8 @@ function calculateForYouScore(tool, roleStr) {
   const R = calculateRoleRelevance(tool, roleStr);
   const stars = Number(tool.githubStars) || 0;
   const popularity = Math.min(1.0, Math.log10(stars + 1) / 5.5);
-  const createdDate = tool.createdAt ? new Date(tool.createdAt).getTime() : Date.now();
-  const ageInDays = Number.isFinite(createdDate)
-    ? Math.max(0, (Date.now() - createdDate) / (1000 * 60 * 60 * 24))
-    : 90;
-  const C = Math.max(0.1, 1.0 - (ageInDays / 90));
   const establishedBonus = tool.source === "curated-seed" ? 0.1 : 0;
-  const finalScore = (R * 0.75) + (popularity * 0.1) + establishedBonus + (C * 0.05);
+  const finalScore = (R * 0.8) + (popularity * 0.1) + establishedBonus;
   return Number(finalScore.toFixed(4));
 }
 
@@ -179,30 +177,76 @@ function encodeCursor(payload) {
   return Buffer.from(JSON.stringify(payload)).toString("base64");
 }
 
-function decodeCursor(cursorStr) {
+function decodeCursor(cursorStr, feedType) {
   try {
+    if (typeof cursorStr !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(cursorStr)) {
+      throw new Error("Invalid cursor encoding");
+    }
     const jsonStr = Buffer.from(cursorStr, "base64").toString("utf8");
     const payload = JSON.parse(jsonStr);
-    if (!payload || typeof payload !== "object" || !payload.id) {
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      typeof payload.id !== "string" ||
+      !payload.id.trim()
+    ) {
       throw new Error("Invalid cursor format");
     }
+
+    if (
+      (feedType === "new" || feedType === "popular") &&
+      !/^[a-f\d]{24}$/i.test(payload.id)
+    ) {
+      throw new Error("Invalid cursor id");
+    }
+    if (feedType === "new" && !Number.isFinite(new Date(payload.createdAt).getTime())) {
+      throw new Error("Invalid cursor date");
+    }
+    if (
+      feedType === "popular" &&
+      (!Number.isFinite(payload.githubStars) || payload.githubStars < 0)
+    ) {
+      throw new Error("Invalid popularity cursor");
+    }
+    if (
+      (feedType === "established" || feedType === "for_you" || feedType === "recommendations") &&
+      !Number.isFinite(payload[feedType === "established" ? "relevanceScore" : "forYouScore"])
+    ) {
+      throw new Error("Invalid ranking cursor");
+    }
     return payload;
-  } catch (err) {
+  } catch {
     throw new Error("Invalid or malformed cursor");
   }
 }
 
 async function getFeed({ type = "established", role, category, limit = 12, cursor }) {
+  if (type !== undefined && typeof type !== "string") {
+    throw new Error("Invalid feed type. Type must be a string");
+  }
   const feedType = String(type).toLowerCase().trim();
   if (!ALLOWED_TYPES.includes(feedType)) {
     throw new Error(`Invalid feed type '${type}'. Must be one of: ${ALLOWED_TYPES.join(", ")}`);
   }
 
-  let parsedLimit = parseInt(limit, 10);
-  if (isNaN(parsedLimit) || parsedLimit <= 0) {
-    parsedLimit = 12;
-  } else if (parsedLimit > 50) {
-    parsedLimit = 50;
+  if (role !== undefined && typeof role !== "string") {
+    throw new Error("Invalid role filter. Role must be a string");
+  }
+  if (category !== undefined && typeof category !== "string") {
+    throw new Error("Invalid category filter. Category must be a string");
+  }
+
+  let parsedLimit = 12;
+  if (limit !== undefined) {
+    if (typeof limit !== "string" && typeof limit !== "number") {
+      throw new Error("Invalid page size. Limit must be a positive integer");
+    }
+    const limitText = String(limit);
+    if (!/^\d+$/.test(limitText) || Number(limitText) <= 0) {
+      throw new Error("Invalid page size. Limit must be a positive integer");
+    }
+    parsedLimit = Math.min(Number(limitText), 50);
   }
 
   const query = { validated: true };
@@ -212,7 +256,9 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
 
   let decodedCursor = null;
   if (cursor) {
-    decodedCursor = decodeCursor(cursor);
+    decodedCursor = decodeCursor(cursor, feedType);
+  } else if (cursor !== undefined && cursor !== "") {
+    throw new Error("Invalid or malformed cursor");
   }
 
   if (feedType === "established") {

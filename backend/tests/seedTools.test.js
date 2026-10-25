@@ -17,7 +17,12 @@ function createToolModel(initialRecords = []) {
     records,
     async updateOne(filter, update, options) {
       assert.equal(options.upsert, true);
-      const existing = records.get(filter.name);
+      const nameExpression = filter.name.$regex;
+      const nameMatcher = new RegExp(nameExpression, filter.name.$options);
+      const existingEntry = Array.from(records.entries()).find(([name]) =>
+        nameMatcher.test(name),
+      );
+      const existing = existingEntry?.[1];
 
       if (existing) {
         const keywords = update.$addToSet?.searchKeywords?.$each || [];
@@ -30,7 +35,7 @@ function createToolModel(initialRecords = []) {
       const inserted = structuredClone(update.$setOnInsert);
       const keywords = update.$addToSet?.searchKeywords?.$each || [];
       inserted.searchKeywords = Array.from(new Set([...keywords]));
-      records.set(filter.name, inserted);
+      records.set(inserted.name, inserted);
       return { upsertedCount: 1 };
     },
   };
@@ -92,6 +97,27 @@ test("repeated seed execution is idempotent and only adds missing role keywords 
     collectSeedTools(toolsByRole).filter((tool) => tool.name === "Framer").length,
     1,
   );
+});
+
+test("seed matches existing names without case sensitivity and preserves their fields", async () => {
+  const existingFigma = {
+    name: "figma",
+    category: "User category",
+    officialUrl: "https://user.example",
+    source: "hackernews",
+    validated: false,
+    searchKeywords: ["existing"],
+  };
+  const model = createToolModel([existingFigma]);
+
+  const result = await seedTools({ ToolModel: model });
+
+  assert.equal(result.inserted, result.processed - 1);
+  assert.equal(model.records.size, result.processed);
+  assert.equal(model.records.has("Figma"), false);
+  assert.equal(model.records.get("figma").officialUrl, existingFigma.officialUrl);
+  assert.equal(model.records.get("figma").source, existingFigma.source);
+  assert.ok(model.records.get("figma").searchKeywords.includes("role:ui/ux designer"));
 });
 
 test("environment loading prefers repository .env and falls back to backend .env", () => {

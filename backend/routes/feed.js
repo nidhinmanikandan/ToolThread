@@ -4,6 +4,12 @@ const { getFeed } = require("../services/feedService");
 
 router.get("/", async (req, res) => {
   try {
+    if (req.query.page !== undefined) {
+      return res.status(400).json({
+        error: "Page-number pagination is not supported; use the cursor parameter",
+      });
+    }
+
     const { type, role, category, limit, cursor } = req.query;
 
     const result = await getFeed({
@@ -16,12 +22,16 @@ router.get("/", async (req, res) => {
 
     res.json(result);
   } catch (err) {
+    const message = typeof err?.message === "string" ? err.message : "";
     if (
-      err.message.startsWith("Invalid feed type") ||
-      err.message.startsWith("Invalid or malformed cursor")
+      message.startsWith("Invalid feed type") ||
+      message.startsWith("Invalid or malformed cursor") ||
+      message.startsWith("Invalid page size") ||
+      message.startsWith("Invalid role filter") ||
+      message.startsWith("Invalid category filter")
     ) {
       return res.status(400).json({
-        error: err.message,
+        error: message,
       });
     }
 
