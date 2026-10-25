@@ -1,19 +1,40 @@
 const Tool = require("../models/Tool");
 
-const ALLOWED_TYPES = ["new", "popular", "trending", "for_you", "recommendations"];
+const ALLOWED_TYPES = [
+  "new",
+  "popular",
+  "trending",
+  "established",
+  "for_you",
+  "recommendations",
+];
 
 const ROLE_KEYWORDS = {
+  "ui/ux designer": [
+    "design", "ui", "ux", "figma", "canvas", "prototype", "css", "styles",
+    "layout", "component", "vector", "graphics", "wireframe", "theme",
+  ],
+  "graphic designer": [
+    "design", "graphics", "vector", "illustration", "image", "photo", "visual",
+    "logo", "typography", "photoshop", "illustrator",
+  ],
   "frontend developer": [
     "frontend", "react", "vue", "angular", "nextjs", "next", "tailwind", "css",
     "html", "javascript", "typescript", "ui", "web", "vite", "webpack", "browser",
     "dom", "component", "design", "storybook"
   ],
-  "ui/ux designer": [
-    "design", "ui", "ux", "figma", "canvas", "prototype", "css", "styles",
-    "layout", "component", "vector", "graphics", "wireframe", "theme"
-  ],
   "mobile developer": [
     "mobile", "react-native", "flutter", "ios", "android", "swift", "kotlin", "app"
+  ],
+  "ai/ml developer": [
+    "ai", "llm", "agent", "agents", "rag", "machine learning", "deep learning",
+    "python", "hugging face", "pytorch", "tensorflow", "model", "prompt",
+    "embedding", "langchain", "data science",
+  ],
+  "ai/ml engineer": [
+    "ai", "llm", "agent", "agents", "rag", "machine learning", "deep learning",
+    "python", "hugging face", "pytorch", "tensorflow", "model", "prompt",
+    "embedding", "langchain", "data science",
   ],
   "ai / ml engineer": [
     "ai", "llm", "agent", "agents", "agentic", "rag", "openai", "gpt", "claude",
@@ -32,17 +53,33 @@ const ROLE_KEYWORDS = {
   "fullstack developer": [
     "fullstack", "frontend", "backend", "react", "nextjs", "node", "api", "database",
     "web", "typescript", "javascript"
-  ]
+  ],
+  "data analyst": [
+    "data analysis", "data analyst", "analytics", "sql", "spreadsheet", "excel",
+    "tableau", "power bi", "dashboard", "reporting", "visualization", "jupyter",
+    "database", "python", "data warehouse", "dbt",
+  ],
+};
+
+const ROLE_ALIASES = {
+  "ui/ux and graphic designer": ["ui/ux designer", "graphic designer"],
+  "ui ux and graphic designer": ["ui/ux designer", "graphic designer"],
+  "ai ml developer": ["ai/ml developer", "ai/ml engineer", "ai engineer"],
+  "ai/ml developer": ["ai/ml developer", "ai/ml engineer", "ai engineer"],
+  "ai/ml engineer": ["ai/ml developer", "ai/ml engineer", "ai engineer"],
+  "ai / ml engineer": ["ai/ml developer", "ai/ml engineer", "ai engineer"],
 };
 
 function matchKeywords(tool, keywords) {
+  const strings = (value) =>
+    Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
   const searchableText = [
-    tool.name || "",
-    tool.category || "",
-    tool.description || "",
-    ...(tool.tags || []),
-    ...(tool.platforms || []),
-    ...(tool.searchKeywords || [])
+    typeof tool.name === "string" ? tool.name : "",
+    typeof tool.category === "string" ? tool.category : "",
+    typeof tool.description === "string" ? tool.description : "",
+    ...strings(tool.tags),
+    ...strings(tool.platforms),
+    ...strings(tool.searchKeywords),
   ].join(" ").toLowerCase();
 
   let matches = 0;
@@ -59,8 +96,17 @@ function matchKeywords(tool, keywords) {
 }
 
 function calculateRoleRelevance(tool, roleStr) {
-  if (!roleStr) return 0.5;
-  const normalizedRole = String(roleStr).toLowerCase().trim();
+  if (typeof roleStr !== "string" || !roleStr.trim()) return 0.5;
+  const normalizedRole = String(roleStr).toLowerCase().trim().replace(/\s+/g, " ");
+  const taggedRoles = (Array.isArray(tool.searchKeywords) ? tool.searchKeywords : [])
+    .filter((keyword) => typeof keyword === "string")
+    .filter((keyword) => keyword.startsWith("role:"))
+    .map((keyword) => keyword.slice("role:".length).trim());
+  const roleAliases = ROLE_ALIASES[normalizedRole] || [normalizedRole];
+  if (taggedRoles.some((taggedRole) => roleAliases.includes(taggedRole))) {
+    return 1.0;
+  }
+
   const keywords = ROLE_KEYWORDS[normalizedRole];
 
   if (!keywords || keywords.length === 0) {
@@ -75,46 +121,132 @@ function calculateRoleRelevance(tool, roleStr) {
 function calculateForYouScore(tool, roleStr) {
   const R = calculateRoleRelevance(tool, roleStr);
   const stars = Number(tool.githubStars) || 0;
-  const P = Math.min(1.0, Math.log10(stars + 1) / 5.5);
-  const isTrend = tool.isTrending ? 0.6 : 0.0;
-  const scoreVal = Math.min(0.4, (Number(tool.score) || 0) / 10);
-  const T = isTrend + scoreVal;
-  const createdDate = tool.createdAt ? new Date(tool.createdAt).getTime() : Date.now();
-  const ageInDays = Math.max(0, (Date.now() - createdDate) / (1000 * 60 * 60 * 24));
-  const C = Math.max(0.1, 1.0 - (ageInDays / 90));
-
-  const finalScore = (R * 0.45) + (P * 0.25) + (T * 0.20) + (C * 0.10);
+  const popularity = Math.min(1.0, Math.log10(stars + 1) / 5.5);
+  const establishedBonus = tool.source === "curated-seed" ? 0.1 : 0;
+  const finalScore = (R * 0.8) + (popularity * 0.1) + establishedBonus;
   return Number(finalScore.toFixed(4));
+}
+
+function rankAndPaginate({ candidates, role, limit, cursor, scoreKey, scoreFor }) {
+  const rankedTools = candidates
+    .map((tool) => ({
+      ...tool,
+      rankingScore: scoreFor(tool, role),
+    }))
+    .sort((a, b) => {
+      if (b.rankingScore !== a.rankingScore) return b.rankingScore - a.rankingScore;
+      return String(b._id).localeCompare(String(a._id));
+    });
+
+  let startIndex = 0;
+  if (cursor && cursor[scoreKey] !== undefined) {
+    const cursorScore = Number(cursor[scoreKey]);
+    const cursorId = String(cursor.id);
+    const foundIndex = rankedTools.findIndex(
+      (tool) =>
+        tool.rankingScore < cursorScore ||
+        (tool.rankingScore === cursorScore && String(tool._id) < cursorId),
+    );
+    startIndex = foundIndex === -1 ? rankedTools.length : foundIndex;
+  }
+
+  const sliced = rankedTools.slice(startIndex, startIndex + limit + 1);
+  const hasMore = sliced.length > limit;
+  const page = hasMore ? sliced.slice(0, limit) : sliced;
+  const lastItem = page[page.length - 1];
+
+  return {
+    tools: page.map(({ rankingScore, ...tool }) => ({
+      ...tool,
+      ...(scoreKey === "forYouScore" ? { forYouScore: rankingScore } : {}),
+    })),
+    pagination: {
+      hasMore,
+      nextCursor:
+        hasMore && lastItem
+          ? encodeCursor({
+              [scoreKey]: lastItem.rankingScore,
+              id: String(lastItem._id),
+            })
+          : null,
+    },
+  };
 }
 
 function encodeCursor(payload) {
   return Buffer.from(JSON.stringify(payload)).toString("base64");
 }
 
-function decodeCursor(cursorStr) {
+function decodeCursor(cursorStr, feedType) {
   try {
+    if (typeof cursorStr !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(cursorStr)) {
+      throw new Error("Invalid cursor encoding");
+    }
     const jsonStr = Buffer.from(cursorStr, "base64").toString("utf8");
     const payload = JSON.parse(jsonStr);
-    if (!payload || typeof payload !== "object" || !payload.id) {
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      typeof payload.id !== "string" ||
+      !payload.id.trim()
+    ) {
       throw new Error("Invalid cursor format");
     }
+
+    if (
+      (feedType === "new" || feedType === "popular") &&
+      !/^[a-f\d]{24}$/i.test(payload.id)
+    ) {
+      throw new Error("Invalid cursor id");
+    }
+    if (feedType === "new" && !Number.isFinite(new Date(payload.createdAt).getTime())) {
+      throw new Error("Invalid cursor date");
+    }
+    if (
+      feedType === "popular" &&
+      (!Number.isFinite(payload.githubStars) || payload.githubStars < 0)
+    ) {
+      throw new Error("Invalid popularity cursor");
+    }
+    if (
+      (feedType === "established" || feedType === "for_you" || feedType === "recommendations") &&
+      !Number.isFinite(payload[feedType === "established" ? "relevanceScore" : "forYouScore"])
+    ) {
+      throw new Error("Invalid ranking cursor");
+    }
     return payload;
-  } catch (err) {
+  } catch {
     throw new Error("Invalid or malformed cursor");
   }
 }
 
-async function getFeed({ type = "trending", role, category, limit = 12, cursor }) {
+async function getFeed({ type = "established", role, category, limit = 12, cursor }) {
+  if (type !== undefined && typeof type !== "string") {
+    throw new Error("Invalid feed type. Type must be a string");
+  }
   const feedType = String(type).toLowerCase().trim();
   if (!ALLOWED_TYPES.includes(feedType)) {
     throw new Error(`Invalid feed type '${type}'. Must be one of: ${ALLOWED_TYPES.join(", ")}`);
   }
 
-  let parsedLimit = parseInt(limit, 10);
-  if (isNaN(parsedLimit) || parsedLimit <= 0) {
-    parsedLimit = 12;
-  } else if (parsedLimit > 50) {
-    parsedLimit = 50;
+  if (role !== undefined && typeof role !== "string") {
+    throw new Error("Invalid role filter. Role must be a string");
+  }
+  if (category !== undefined && typeof category !== "string") {
+    throw new Error("Invalid category filter. Category must be a string");
+  }
+
+  let parsedLimit = 12;
+  if (limit !== undefined) {
+    if (typeof limit !== "string" && typeof limit !== "number") {
+      throw new Error("Invalid page size. Limit must be a positive integer");
+    }
+    const limitText = String(limit);
+    if (!/^\d+$/.test(limitText) || Number(limitText) <= 0) {
+      throw new Error("Invalid page size. Limit must be a positive integer");
+    }
+    parsedLimit = Math.min(Number(limitText), 50);
   }
 
   const query = { validated: true };
@@ -124,57 +256,47 @@ async function getFeed({ type = "trending", role, category, limit = 12, cursor }
 
   let decodedCursor = null;
   if (cursor) {
-    decodedCursor = decodeCursor(cursor);
+    decodedCursor = decodeCursor(cursor, feedType);
+  } else if (cursor !== undefined && cursor !== "") {
+    throw new Error("Invalid or malformed cursor");
+  }
+
+  if (feedType === "established") {
+    query.$or = [
+      { source: "curated-seed" },
+      { searchKeywords: { $regex: "^catalogue:established$" } },
+    ];
+    const allCandidates = await Tool.find(query).lean();
+    return rankAndPaginate({
+      candidates: allCandidates,
+      role,
+      limit: parsedLimit,
+      cursor: decodedCursor,
+      scoreKey: "relevanceScore",
+      scoreFor: (tool, profileRole) =>
+        calculateRoleRelevance(tool, profileRole) * 0.9 +
+        Math.min(1, Math.log10((Number(tool.githubStars) || 0) + 1) / 5.5) * 0.1,
+    });
   }
 
   if (feedType === "for_you" || feedType === "recommendations") {
     const allCandidates = await Tool.find(query).lean();
-    const scoredTools = allCandidates.map((tool) => ({
-      ...tool,
-      forYouScore: calculateForYouScore(tool, role),
-    }));
-
-    scoredTools.sort((a, b) => {
-      if (b.forYouScore !== a.forYouScore) return b.forYouScore - a.forYouScore;
-      if ((b.githubStars || 0) !== (a.githubStars || 0)) return (b.githubStars || 0) - (a.githubStars || 0);
-      return String(b._id).localeCompare(String(a._id));
+    return rankAndPaginate({
+      candidates: allCandidates,
+      role,
+      limit: parsedLimit,
+      cursor: decodedCursor,
+      scoreKey: "forYouScore",
+      scoreFor: calculateForYouScore,
     });
+  }
 
-    let startIndex = 0;
-    if (decodedCursor && decodedCursor.forYouScore !== undefined) {
-      const cursorScore = Number(decodedCursor.forYouScore);
-      const cursorId = String(decodedCursor.id);
-
-      const foundIndex = scoredTools.findIndex(
-        (t) =>
-          t.forYouScore < cursorScore ||
-          (t.forYouScore === cursorScore && String(t._id) < cursorId)
-      );
-      if (foundIndex !== -1) {
-        startIndex = foundIndex;
-      } else {
-        startIndex = scoredTools.length;
-      }
-    }
-
-    const sliced = scoredTools.slice(startIndex, startIndex + parsedLimit + 1);
-    const hasMore = sliced.length > parsedLimit;
-    const tools = hasMore ? sliced.slice(0, parsedLimit) : sliced;
-
-    let nextCursor = null;
-    if (hasMore && tools.length > 0) {
-      const lastItem = tools[tools.length - 1];
-      nextCursor = encodeCursor({
-        forYouScore: lastItem.forYouScore,
-        id: String(lastItem._id),
-      });
-    }
-
+  if (feedType === "trending") {
     return {
-      tools,
+      tools: [],
       pagination: {
-        hasMore,
-        nextCursor,
+        hasMore: false,
+        nextCursor: null,
       },
     };
   }
@@ -198,29 +320,6 @@ async function getFeed({ type = "trending", role, category, limit = 12, cursor }
         { githubStars: cursorStars, _id: { $lt: decodedCursor.id } },
       ];
     }
-  } else if (feedType === "trending") {
-    sortOption = { isTrending: -1, score: -1, githubStars: -1, _id: -1 };
-    if (decodedCursor) {
-      const curTrending = Boolean(decodedCursor.isTrending);
-      const curScore = Number(decodedCursor.score) || 0;
-      const curStars = Number(decodedCursor.githubStars) || 0;
-      const curId = decodedCursor.id;
-
-      if (curTrending) {
-        query.$or = [
-          { isTrending: true, score: { $lt: curScore } },
-          { isTrending: true, score: curScore, githubStars: { $lt: curStars } },
-          { isTrending: true, score: curScore, githubStars: curStars, _id: { $lt: curId } },
-          { isTrending: false },
-        ];
-      } else {
-        query.$or = [
-          { isTrending: false, score: { $lt: curScore } },
-          { isTrending: false, score: curScore, githubStars: { $lt: curStars } },
-          { isTrending: false, score: curScore, githubStars: curStars, _id: { $lt: curId } },
-        ];
-      }
-    }
   }
 
   const results = await Tool.find(query)
@@ -241,13 +340,6 @@ async function getFeed({ type = "trending", role, category, limit = 12, cursor }
       });
     } else if (feedType === "popular") {
       nextCursor = encodeCursor({
-        githubStars: lastItem.githubStars || 0,
-        id: String(lastItem._id),
-      });
-    } else if (feedType === "trending") {
-      nextCursor = encodeCursor({
-        isTrending: Boolean(lastItem.isTrending),
-        score: lastItem.score || 0,
         githubStars: lastItem.githubStars || 0,
         id: String(lastItem._id),
       });

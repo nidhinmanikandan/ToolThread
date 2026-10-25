@@ -66,7 +66,10 @@ app.use("/api/progress", progressRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 
 //connect database
-connectDB();
+connectDB().catch(() => {
+  console.error("MongoDB connection failed.");
+  process.exit(1);
+});
 
 // Start the server listening on port 5000
 app.listen(5000, () => {

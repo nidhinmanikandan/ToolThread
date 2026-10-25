@@ -26,7 +26,12 @@ function ToolRoadmapPage() {
 
         const roadmap = await api.getToolRoadmap(selectedTool);
 
-        setTool(roadmap);
+        setTool({
+          ...roadmap,
+          logo: roadmap.logo || selectedTool.logo,
+          logoDomain: roadmap.logoDomain || selectedTool.logoDomain || "",
+          officialUrl: selectedTool.officialUrl,
+        });
       } catch (err) {
         console.error(err);
       }

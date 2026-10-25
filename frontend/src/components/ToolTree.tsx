@@ -24,7 +24,7 @@ import RoadmapNode from "./RoadmapNode";
 import type { ToolRoadmap, RoadmapItem, RoadmapNodeData } from "@/types/roadmap";
 
 type Props = {
-  roadmap: ToolRoadmap["roadmap"];
+  tool: ToolRoadmap;
 };
 
 const NODE_WIDTH = 320;
@@ -45,6 +45,90 @@ type LayoutedNode = RoadmapNodeItem & {
   sourcePosition?: Position;
   targetPosition?: Position;
 };
+
+function getUniqueNodeId(prefix: string, usedIds: Set<string>) {
+  let id = prefix;
+  let suffix = 1;
+
+  while (usedIds.has(id)) {
+    id = `${prefix}-${suffix}`;
+    suffix += 1;
+  }
+
+  usedIds.add(id);
+  return id;
+}
+
+function addEndpointNodes(roadmap: RoadmapItem[], tool: ToolRoadmap): RoadmapItem[] {
+  const usedIds = new Set(roadmap.map((item) => item.id));
+  const startId = getUniqueNodeId("__toolthread-start__", usedIds);
+  const endId = getUniqueNodeId("__toolthread-end__", usedIds);
+  const roadmapIds = new Set(roadmap.map((item) => item.id));
+  const validParents = new Map(
+    roadmap.map((item) => [
+      item.id,
+      (item.parents ?? []).filter((parentId) => roadmapIds.has(parentId)),
+    ]),
+  );
+  const rootIds = roadmap
+    .filter((item) => (validParents.get(item.id) ?? []).length === 0)
+    .map((item) => item.id);
+  const roots = rootIds.length > 0 ? rootIds : [roadmap[0].id];
+  const parentIds = new Set(Array.from(validParents.values()).flat());
+  const leaves = roadmap.filter((item) => !parentIds.has(item.id));
+  const depths = computeDepths(roadmap);
+  const candidates = leaves.length > 0 ? leaves : roadmap;
+  const lastNode = candidates.reduce((last, item) =>
+    (depths.get(item.id) ?? 0) >= (depths.get(last.id) ?? 0) ? item : last,
+  );
+  const domainUrl = tool.logoDomain ? `https://${tool.logoDomain}` : undefined;
+
+  return [
+    {
+      id: startId,
+      kind: "start",
+      title: tool.title,
+      description:
+        tool.description || `Follow this roadmap to build practical skills with ${tool.title}.`,
+      steps: [],
+      parents: [],
+    },
+    ...roadmap.map((item) => ({
+      ...item,
+      kind: "learning" as const,
+      parents: roots.includes(item.id) ? [startId] : item.parents,
+    })),
+    {
+      id: endId,
+      kind: "end",
+      title: "Ready to Create?",
+      description: `Put what you have learned into practice with ${tool.title}.`,
+      steps: [],
+      parents: [lastNode.id],
+    },
+  ].map((item) => {
+    if (item.id === startId) {
+      return {
+        ...item,
+        logoSrc:
+          tool.logo ||
+          (tool.logoDomain
+            ? `https://www.google.com/s2/favicons?sz=128&domain=${encodeURIComponent(tool.logoDomain)}`
+            : undefined),
+      };
+    }
+
+    if (item.id === endId) {
+      return {
+        ...item,
+        ctaLabel: `Start Creating in ${tool.title}`,
+        ctaUrl: tool.officialUrl || domainUrl,
+      };
+    }
+
+    return item;
+  });
+}
 
 const nodeTypes: NodeTypes = {
   roadmap: RoadmapNode,
@@ -125,36 +209,46 @@ function getLayoutedNodes(nodes: RoadmapNodeItem[], roadmap: RoadmapItem[]): Lay
   }));
 }
 
-export default function ToolTree({ roadmap }: Props) {
-  if (!roadmap || roadmap.length === 0) {
-    return <div className="flex h-full items-center justify-center">Generating roadmap...</div>;
-  }
+export default function ToolTree({ tool }: Props) {
+  const roadmap = tool.roadmap ?? [];
+  const roadmapWithEndpoints = useMemo(
+    () => (roadmap.length > 0 ? addEndpointNodes(roadmap, tool) : []),
+    [roadmap, tool],
+  );
+
   const nodes = useMemo<RoadmapNodeItem[]>(() => {
-    return roadmap.map((item) => ({
+    return roadmapWithEndpoints.map((item) => ({
       id: item.id,
       type: "roadmap",
       data: {
+        kind: item.kind,
         title: item.title,
         description: item.description,
         why: item.why,
         glow: item.glow,
         steps: item.steps ?? [],
+        logoSrc: item.logoSrc,
+        ctaLabel: item.ctaLabel,
+        ctaUrl: item.ctaUrl,
       },
       position: { x: 0, y: 0 },
       targetPosition: Position.Left,
       sourcePosition: Position.Right,
     }));
-  }, [roadmap]);
+  }, [roadmapWithEndpoints]);
 
   const edges = useMemo<Edge[]>(() => {
-    const depths = computeDepths(roadmap);
+    const depths = computeDepths(roadmapWithEndpoints);
 
-    return roadmap.flatMap((item) => {
+    return roadmapWithEndpoints.flatMap((item) => {
       const parents = item.parents ?? [];
       const targetDepth = depths.get(item.id) ?? 0;
 
       return parents
-        .filter((parentId) => (depths.get(parentId) ?? 0) === targetDepth - 1)
+        .filter(
+          (parentId) =>
+            item.kind === "end" || (depths.get(parentId) ?? 0) === targetDepth - 1,
+        )
         .map((parentId) => ({
           id: `${parentId}-${item.id}`,
           source: parentId,
@@ -168,15 +262,15 @@ export default function ToolTree({ roadmap }: Props) {
           },
         }));
     });
-  }, [roadmap]);
+  }, [roadmapWithEndpoints]);
 
   const [layoutedNodes, setLayoutedNodes] = useState<LayoutedNode[]>([]);
   const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
 
   useEffect(() => {
-    setLayoutedNodes(getLayoutedNodes(nodes, roadmap));
+    setLayoutedNodes(getLayoutedNodes(nodes, roadmapWithEndpoints));
     setLayoutedEdges(edges);
-  }, [nodes, edges, roadmap]);
+  }, [nodes, edges, roadmapWithEndpoints]);
 
   const onNodesChange = useCallback((changes: NodeChange<RoadmapNodeItem>[]) => {
     setLayoutedNodes((nds) => applyNodeChanges(changes, nds) as LayoutedNode[]);
@@ -188,18 +282,27 @@ export default function ToolTree({ roadmap }: Props) {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      const depths = computeDepths(roadmap);
+      const depths = computeDepths(roadmapWithEndpoints);
       const sourceDepth = depths.get(connection.source) ?? 0;
       const targetDepth = depths.get(connection.target) ?? 0;
+      const source = roadmapWithEndpoints.find((item) => item.id === connection.source);
+      const target = roadmapWithEndpoints.find((item) => item.id === connection.target);
+      const isEndpointConnection =
+        (source?.kind === "start" && target?.kind === "learning") ||
+        (source?.kind === "learning" && target?.kind === "end");
 
-      if (targetDepth !== sourceDepth + 1) {
+      if (targetDepth !== sourceDepth + 1 && !isEndpointConnection) {
         return;
       }
 
       setLayoutedEdges((eds) => addEdge({ ...connection, type: "smoothstep" }, eds));
     },
-    [roadmap],
+    [roadmapWithEndpoints],
   );
+
+  if (roadmap.length === 0) {
+    return <div className="flex h-full items-center justify-center">Generating roadmap...</div>;
+  }
 
   return (
     <div className="absolute inset-0 overflow-visible">

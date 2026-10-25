@@ -3,7 +3,7 @@ const Tool = require("../models/Tool");
 
 async function validateCandidate(candidate) {
   // Ignore invalid candidates
-  if (!candidate.name || !candidate.officialUrl) {
+  if (typeof candidate.name !== "string" || !candidate.name.trim() || !candidate.officialUrl) {
     console.log(`Rejected: ${candidate.name || candidate._id}`);
     await CandidateTool.updateOne(
       { _id: candidate._id },
@@ -15,8 +15,9 @@ async function validateCandidate(candidate) {
   }
 
   // Already exists?
+  const escapedName = candidate.name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const exists = await Tool.findOne({
-    name: candidate.name,
+    name: { $regex: `^${escapedName}$`, $options: "i" },
   });
 
   if (exists) {
