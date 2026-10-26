@@ -71,7 +71,9 @@ function installToolFixture(records) {
               const rightValue = right[field] ?? 0;
               if (leftValue === rightValue) continue;
               if (leftValue instanceof Date && rightValue instanceof Date) {
-                return direction * (leftValue.getTime() - rightValue.getTime());
+                const dateDifference = leftValue.getTime() - rightValue.getTime();
+                if (dateDifference !== 0) return direction * dateDifference;
+                continue;
               }
               return direction * (leftValue < rightValue ? -1 : 1);
             }
@@ -297,6 +299,56 @@ test("personalized feed ranks established tools for designer and AI/ML profile a
   }
 });
 
+test("personalized feeds only include validated catalogue records", async () => {
+  const records = [
+    ...seedFixtureRecords(),
+    {
+      _id: "eeeeeeeeeeeeeeeeeeeeeeee",
+      name: "Reviewed external AI tool",
+      source: "github-search",
+      validated: true,
+      searchKeywords: ["role:ai/ml developer", "catalogue:established"],
+      githubStars: 50,
+    },
+    {
+      _id: "ffffffffffffffffffffffff",
+      name: "Unreviewed AI package",
+      source: "npm-search",
+      validated: true,
+      searchKeywords: ["role:ai/ml developer"],
+      githubStars: 100000,
+    },
+  ];
+  const fixture = installToolFixture(records);
+
+  try {
+    for (const type of ["for_you", "recommendations"]) {
+      const result = await getFeed({ type, role: "AI/ML Developer", limit: 50 });
+      assert.ok(result.tools.length > 0);
+      assert.ok(
+        result.tools.every(
+          (tool) =>
+            tool.source === "curated-seed" ||
+            tool.searchKeywords.includes("catalogue:established"),
+        ),
+      );
+      assert.ok(result.tools.some((tool) => tool.name === "Reviewed external AI tool"));
+      assert.ok(result.tools.every((tool) => tool.name !== "Unreviewed AI package"));
+    }
+
+    const unfilteredRoleFeed = await getFeed({ type: "for_you", limit: 50 });
+    assert.ok(
+      unfilteredRoleFeed.tools.every(
+        (tool) =>
+          tool.source === "curated-seed" ||
+          tool.searchKeywords.includes("catalogue:established"),
+      ),
+    );
+  } finally {
+    fixture.restore();
+  }
+});
+
 test("ranking tolerates missing and malformed optional metadata", async () => {
   const fixture = installToolFixture([
     {
@@ -348,6 +400,47 @@ test("popular feed keeps category filtering, star sorting, and cursor pagination
     assert.deepEqual(secondPage.tools.map((tool) => tool.name), ["C"]);
     assert.equal(secondPage.pagination.hasMore, false);
     assert.equal(secondPage.pagination.nextCursor, null);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("new feed orders by creation time and paginates equal timestamps without duplicates", async () => {
+  const records = [
+    {
+      _id: "000000000000000000000001",
+      name: "Older",
+      validated: true,
+      createdAt: new Date("2026-10-25T09:00:00.000Z"),
+    },
+    {
+      _id: "000000000000000000000002",
+      name: "Newest first",
+      validated: true,
+      createdAt: new Date("2026-10-25T10:00:00.000Z"),
+    },
+    {
+      _id: "000000000000000000000003",
+      name: "Newest second",
+      validated: true,
+      createdAt: new Date("2026-10-25T10:00:00.000Z"),
+    },
+  ];
+  const fixture = installToolFixture(records);
+
+  try {
+    const firstPage = await getFeed({ type: "new", limit: 2 });
+    assert.deepEqual(firstPage.tools.map((tool) => tool.name), ["Newest second", "Newest first"]);
+    assert.deepEqual(fixture.lastSort, { createdAt: -1, _id: -1 });
+    assert.ok(firstPage.pagination.nextCursor);
+
+    const secondPage = await getFeed({
+      type: "new",
+      limit: 2,
+      cursor: firstPage.pagination.nextCursor,
+    });
+    assert.deepEqual(secondPage.tools.map((tool) => tool.name), ["Older"]);
+    assert.equal(secondPage.pagination.hasMore, false);
   } finally {
     fixture.restore();
   }
@@ -407,6 +500,29 @@ test("feed API reports unsupported page numbers and invalid sort types as client
     assert.equal(typeResponse.status, 400);
     assert.match((await typeResponse.json()).error, /Invalid feed type/);
   } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("feed API preserves the established response shape for a successful request", async () => {
+  const fixture = installToolFixture(seedFixtureRecords());
+  const app = express();
+  app.use("/", feedRoute);
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  try {
+    const address = server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/?type=established&limit=2`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.tools.length, 2);
+    assert.deepEqual(Object.keys(body.pagination).sort(), ["hasMore", "nextCursor"]);
+    assert.equal(typeof body.pagination.hasMore, "boolean");
+  } finally {
+    fixture.restore();
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
     });

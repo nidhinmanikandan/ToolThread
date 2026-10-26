@@ -157,6 +157,15 @@ function buildRoleCandidateFilter(roleStr) {
   return { $or: clauses };
 }
 
+function buildCatalogueFilter() {
+  return {
+    $or: [
+      { source: "curated-seed" },
+      { searchKeywords: { $regex: "^catalogue:established$" } },
+    ],
+  };
+}
+
 function calculateRoleRelevance(tool, roleStr) {
   if (typeof roleStr !== "string" || !roleStr.trim()) return 0.5;
   const normalizedRole = normalizeRole(roleStr);
@@ -325,10 +334,7 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
   }
 
   if (feedType === "established") {
-    query.$or = [
-      { source: "curated-seed" },
-      { searchKeywords: { $regex: "^catalogue:established$" } },
-    ];
+    Object.assign(query, buildCatalogueFilter());
     if (typeof role === "string" && role.trim()) {
       query.$and = [buildRoleCandidateFilter(role)];
     } else {
@@ -360,6 +366,7 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
   }
 
   if (feedType === "for_you" || feedType === "recommendations") {
+    Object.assign(query, buildCatalogueFilter());
     if (typeof role === "string" && role.trim()) {
       const roleFilter = buildRoleCandidateFilter(role);
       query.$and = [roleFilter];

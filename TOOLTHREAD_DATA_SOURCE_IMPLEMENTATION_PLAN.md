@@ -246,7 +246,7 @@ Start with the curated baseline and profile-aware feed, not more collectors. The
 - [ ] Expand the existing role-based seeds in `backend/data/tools.js` into reviewed catalogue records with canonical official URLs, categories, entity type, and role/use-case tags.
 - [ ] Add a repeatable seed script at `backend/scripts/seedTools.js`; upsert only reviewed records and never clear the database.
 - [ ] Extend `backend/models/Tool.js` minimally for canonical identity, role/use-case metadata, and URL verification state; defer destructive deduplication.
-- [ ] Update `backend/services/feedService.js` so established and personalized views use the catalogue and missing trend evidence does not imply trending.
+- [x] Update `backend/services/feedService.js` so established and personalized views use the catalogue and missing trend evidence does not imply trending.
 - [ ] Update `frontend/src/services/api.ts`, `frontend/src/hooks/useDashboardData.ts`, and `frontend/src/routes/discover.tsx` so labels match the requested feed.
 - [ ] Add tests for repeatable seeding, UI/UX/AI-ML/data-analyst ranking, canonical duplicate handling, pagination, and trend evidence requirements; replace the nonfunctional backend test script.
 - [ ] Keep `backend/services/aiRecommendation.js` and the roadmap flow intact for this first milestone; later constrain Gemini recommendations to canonical catalogue records.
