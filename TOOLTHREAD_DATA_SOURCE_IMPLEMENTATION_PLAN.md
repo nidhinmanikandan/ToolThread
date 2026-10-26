@@ -198,6 +198,16 @@ Permanent data should be the curated canonical tool record and compact source at
 - **Tests and acceptance:** metric deltas computed only from dated observations; duplicate polling does not count as multiple sources; missing history does not display “trending”; timestamps and source attribution are shown.
 - **Risk/rollback:** keep trend scoring configurable and disable trend labels if a source stops supplying reliable measurements. Do not add Product Hunt, Dribbble, Behance, Awwwards, or Framer scraping without verified access and permission.
 
+### Milestone 4 evidence foundation (2026-10-26)
+
+- Added `backend/models/TrendObservation.js` for dated, numeric observations linked to a catalogue tool, with source, signal type, source-event identity, and deterministic duplicate identity.
+- Added `backend/services/trendService.js`: comparisons are restricted to one tool/source/signal/event; at least three unique timestamps over 24 hours are required within a seven-day lookback; the newest must be no older than 48 hours; the first measurement must be positive; growth of at least 10% is increasing, a change between -10% and +10% is stable, and a decline of at least 10% is decreasing. Invalid, conflicting, stale, or insufficient data is not trending.
+- Added `backend/scripts/recordTrendObservations.js`. It validates JSON input and catalogue tool references, runs read-only by default, and only writes with the explicit `--write` option. Supported manual signals are GitHub total stars and npm weekly downloads; imports must include the actual source measurement time and event identity.
+- Manual workflow: save an array of `{ "toolId": "<catalogue ObjectId>", "source": "github", "signalType": "stars_total", "measurement": 1234, "observedAt": "<source observation ISO timestamp>", "sourceEventId": "<verified owner/repository>" }` records as JSON, then run `node scripts/recordTrendObservations.js <input.json>` from `backend` to validate without writing; add `--write` only after reviewing the dry run to persist observations. For npm use `source: "npm"`, `signalType: "weekly_downloads"`, and the exact package name as `sourceEventId`. Re-imports at the same event/time are idempotent, and conflicting measurements are rejected.
+- The checked-in collector pipeline does not currently provide trustworthy, persisted tool-level time series: GitHub collection is disabled in `runCollectors.js`; active HN data is story-level and not reliably linked to catalogue tools; npm weekly downloads are transient candidate metadata and are not copied into catalogue records as dated samples. No source currently supplies sufficient history by itself.
+- Therefore `type=trending` remains empty and is not connected to the calculation yet. Do not infer trends from `isTrending`, lifetime stars, HN story dates, or established-catalogue status. A manually verified tool/source identity and repeated dated measurements are required before enabling the feed.
+- No migration, collector run, scheduler, external integration, or database write was performed for this milestone.
+
 ## 8. Testing and success criteria
 
 Use fixtures and stubbed source responses for unit tests. Avoid live API tests in the normal suite. For optional Mongo integration tests, use a disposable test database and never run the collector pipeline against production data.
