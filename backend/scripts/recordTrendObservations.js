@@ -61,7 +61,7 @@ function prepareObservations(input, now = new Date()) {
     ].join("|");
     const _id = crypto.createHash("sha256").update(identity).digest("hex");
 
-    prepared.set(_id, {
+    const observation = {
       _id,
       toolId,
       source: item.source,
@@ -69,7 +69,16 @@ function prepareObservations(input, now = new Date()) {
       measurement: item.measurement,
       observedAt,
       sourceEventId,
-    });
+    };
+    const existing = prepared.get(_id);
+    if (existing && existing.measurement !== observation.measurement) {
+      throw new Error(
+        `Conflicting observations for the same source event and timestamp: ${sourceEventId}`,
+      );
+    }
+    if (!existing) {
+      prepared.set(_id, observation);
+    }
   }
 
   return Array.from(prepared.values());

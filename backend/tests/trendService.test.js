@@ -147,6 +147,27 @@ test("manual observation preparation validates identities and deduplicates repea
   );
 });
 
+test("manual observation preparation rejects conflicting duplicate measurements", () => {
+  const [original] = observations([100]);
+  assert.throws(
+    () =>
+      prepareObservations(
+        [original, { ...original, measurement: 101 }],
+        NOW,
+      ),
+    /Conflicting observations for the same source event and timestamp/,
+  );
+});
+
+test("manual observation preparation preserves independent valid observations", () => {
+  const [first, second] = observations([100, 200], {
+    times: ["2026-10-24T12:00:00.000Z", "2026-10-25T12:00:00.000Z"],
+  });
+  const prepared = prepareObservations([first, second], NOW);
+  assert.equal(prepared.length, 2);
+  assert.notEqual(prepared[0]._id, prepared[1]._id);
+});
+
 test("manual observation preparation rejects unsupported or invented measurements", () => {
   const [valid] = observations([100]);
   assert.throws(
@@ -251,6 +272,59 @@ test("manual import rejects observations linked to unknown catalogue tools", asy
       }),
       /Unknown catalogue tool id/,
     );
+  } finally {
+    if (previousUri === undefined) delete process.env.MONGO_URI;
+    else process.env.MONGO_URI = previousUri;
+  }
+});
+
+test("conflicting batches are rejected before database connection or any persistence", async () => {
+  const [original] = observations([100]);
+  let connections = 0;
+  let writes = 0;
+  const previousUri = process.env.MONGO_URI;
+  process.env.MONGO_URI = "test-only";
+
+  try {
+    await assert.rejects(
+      runObservationImport({
+        inputPath: "observations.json",
+        write: true,
+        now: NOW,
+        loadEnv() {},
+        connect: async () => {
+          connections += 1;
+        },
+        disconnect: async () => {},
+        ToolModel: {
+          find: () => ({
+            select() {
+              return { lean: async () => [{ _id: TOOL_ID }] };
+            },
+          }),
+        },
+        ObservationModel: {
+          find: () => ({ lean: async () => [] }),
+          bulkWrite: async () => {
+            writes += 1;
+            return { upsertedCount: 0 };
+          },
+        },
+        readFile: () =>
+          JSON.stringify([
+            { ...original, observedAt: original.observedAt.toISOString() },
+            {
+              ...original,
+              measurement: 101,
+              observedAt: original.observedAt.toISOString(),
+            },
+          ]),
+        logger: { log() {} },
+      }),
+      /Conflicting observations for the same source event and timestamp/,
+    );
+    assert.equal(connections, 0);
+    assert.equal(writes, 0);
   } finally {
     if (previousUri === undefined) delete process.env.MONGO_URI;
     else process.env.MONGO_URI = previousUri;
