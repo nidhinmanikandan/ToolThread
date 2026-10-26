@@ -1,4 +1,6 @@
 const Tool = require("../models/Tool");
+const TrendObservation = require("../models/TrendObservation");
+const { calculateTrendSummary, LOOKBACK_MS } = require("./trendService");
 
 const ALLOWED_TYPES = [
   "new",
@@ -245,6 +247,104 @@ function encodeCursor(payload) {
   return Buffer.from(JSON.stringify(payload)).toString("base64");
 }
 
+function buildTrendObservationPipeline(now) {
+  const observedAtEnd = new Date(now);
+  const observedAtStart = new Date(observedAtEnd.getTime() - LOOKBACK_MS);
+  return [
+    {
+      $match: {
+        toolId: { $type: "objectId" },
+        sourceEventId: { $type: "string", $regex: "\\S" },
+        observedAt: { $gte: observedAtStart, $lte: observedAtEnd },
+        $or: [
+          { source: "github", signalType: "stars_total" },
+          { source: "npm", signalType: "weekly_downloads" },
+        ],
+      },
+    },
+    {
+      $group: {
+        _id: {
+          toolId: "$toolId",
+          source: "$source",
+          signalType: "$signalType",
+          sourceEventId: "$sourceEventId",
+          observedAt: "$observedAt",
+        },
+        measurements: { $addToSet: "$measurement" },
+        invalidMeasurements: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $isNumber: "$measurement" },
+                  { $gte: ["$measurement", 0] },
+                  { $lte: ["$measurement", Number.MAX_VALUE] },
+                ],
+              },
+              0,
+              1,
+            ],
+          },
+        },
+      },
+    },
+    {
+      $sort: {
+        "_id.toolId": 1,
+        "_id.source": 1,
+        "_id.signalType": 1,
+        "_id.sourceEventId": 1,
+        "_id.observedAt": 1,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          toolId: "$_id.toolId",
+          source: "$_id.source",
+          signalType: "$_id.signalType",
+          sourceEventId: "$_id.sourceEventId",
+        },
+        observationCount: { $sum: 1 },
+        firstObservedAt: { $first: "$_id.observedAt" },
+        firstMeasurements: { $first: "$measurements" },
+        lastObservedAt: { $last: "$_id.observedAt" },
+        lastMeasurements: { $last: "$measurements" },
+        conflictingObservationCount: {
+          $sum: {
+            $cond: [
+              {
+                $or: [
+                  { $gt: [{ $size: "$measurements" }, 1] },
+                  { $gt: ["$invalidMeasurements", 0] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        toolId: "$_id.toolId",
+        source: "$_id.source",
+        signalType: "$_id.signalType",
+        sourceEventId: "$_id.sourceEventId",
+        observationCount: 1,
+        firstObservedAt: 1,
+        firstMeasurement: { $arrayElemAt: ["$firstMeasurements", 0] },
+        lastObservedAt: 1,
+        lastMeasurement: { $arrayElemAt: ["$lastMeasurements", 0] },
+        conflictingObservationCount: 1,
+      },
+    },
+  ];
+}
+
 function decodeCursor(cursorStr, feedType) {
   try {
     if (typeof cursorStr !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(cursorStr)) {
@@ -267,7 +367,8 @@ function decodeCursor(cursorStr, feedType) {
         feedType === "popular" ||
         feedType === "established" ||
         feedType === "for_you" ||
-        feedType === "recommendations") &&
+        feedType === "recommendations" ||
+        feedType === "trending") &&
       !/^[a-f\d]{24}$/i.test(payload.id)
     ) {
       throw new Error("Invalid cursor id");
@@ -293,7 +394,7 @@ function decodeCursor(cursorStr, feedType) {
   }
 }
 
-async function getFeed({ type = "established", role, category, limit = 12, cursor }) {
+async function getFeed({ type = "established", role, category, limit = 12, cursor, now = new Date() }) {
   if (type !== undefined && typeof type !== "string") {
     throw new Error("Invalid feed type. Type must be a string");
   }
@@ -409,11 +510,74 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
   }
 
   if (feedType === "trending") {
+    const summaries = await TrendObservation.aggregate(buildTrendObservationPipeline(now)).exec();
+    const eligible = summaries
+      .map((summary) => ({
+        summary,
+        trend: calculateTrendSummary(summary, now),
+      }))
+      .filter(({ trend }) => trend.status === "increasing")
+      .sort((left, right) => {
+        const toolComparison = String(left.summary.toolId).localeCompare(String(right.summary.toolId));
+        if (toolComparison !== 0) return toolComparison;
+        const sourceComparison = left.summary.source.localeCompare(right.summary.source);
+        if (sourceComparison !== 0) return sourceComparison;
+        const signalComparison = left.summary.signalType.localeCompare(right.summary.signalType);
+        if (signalComparison !== 0) return signalComparison;
+        return left.summary.sourceEventId.localeCompare(right.summary.sourceEventId);
+      });
+    const trendByToolId = new Map();
+    for (const { summary, trend } of eligible) {
+      const toolId = String(summary.toolId);
+      if (!trendByToolId.has(toolId)) {
+        trendByToolId.set(toolId, {
+          status: trend.status,
+          source: summary.source,
+          signalType: summary.signalType,
+          sourceEventId: summary.sourceEventId,
+          growthPercent: trend.growthPercent,
+          from: summary.firstObservedAt,
+          through: summary.lastObservedAt,
+        });
+      }
+    }
+
+    if (trendByToolId.size === 0) {
+      return {
+        tools: [],
+        pagination: {
+          hasMore: false,
+          nextCursor: null,
+        },
+      };
+    }
+
+    const trendQuery = { ...query };
+    Object.assign(trendQuery, buildCatalogueFilter());
+    trendQuery._id = { $in: Array.from(trendByToolId.keys()) };
+    if (typeof role === "string" && role.trim()) {
+      trendQuery.$and = [buildRoleCandidateFilter(role)];
+    }
+    if (decodedCursor) {
+      trendQuery.$and = [...(trendQuery.$and || []), { _id: { $gt: decodedCursor.id } }];
+    }
+    const results = await Tool.find(trendQuery)
+      .sort({ _id: 1 })
+      .limit(parsedLimit + 1)
+      .lean();
+    const hasMore = results.length > parsedLimit;
+    const tools = hasMore ? results.slice(0, parsedLimit) : results;
+    const page = tools.map((tool) => ({
+      ...tool,
+      trendEvidence: trendByToolId.get(String(tool._id)),
+    }));
+    const lastItem = tools[tools.length - 1];
+
     return {
-      tools: [],
+      tools: page,
       pagination: {
-        hasMore: false,
-        nextCursor: null,
+        hasMore,
+        nextCursor: hasMore && lastItem ? encodeCursor({ id: String(lastItem._id) }) : null,
       },
     };
   }
@@ -474,5 +638,6 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
 }
 
 module.exports = {
+  buildTrendObservationPipeline,
   getFeed,
 };

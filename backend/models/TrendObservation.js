@@ -42,4 +42,12 @@ const TrendObservationSchema = new mongoose.Schema(
   },
 );
 
+TrendObservationSchema.index({
+  observedAt: 1,
+  toolId: 1,
+  source: 1,
+  signalType: 1,
+  sourceEventId: 1,
+});
+
 module.exports = mongoose.model("TrendObservation", TrendObservationSchema);

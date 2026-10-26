@@ -3,7 +3,8 @@ const assert = require("node:assert/strict");
 const express = require("express");
 const http = require("node:http");
 const Tool = require("../models/Tool");
-const { getFeed } = require("../services/feedService");
+const TrendObservation = require("../models/TrendObservation");
+const { buildTrendObservationPipeline, getFeed } = require("../services/feedService");
 const feedRoute = require("../routes/feed");
 const { collectSeedTools } = require("../scripts/seedTools");
 const toolsByRole = require("../data/tools");
@@ -108,6 +109,58 @@ function seedFixtureRecords() {
     createdAt: new Date("2026-10-25T00:00:00.000Z"),
     githubStars: 0,
   }));
+}
+
+function installTrendFixture({ tools, summaries }) {
+  const toolFixture = installToolFixture(tools);
+  const originalAggregate = TrendObservation.aggregate;
+  let lastPipeline;
+  TrendObservation.aggregate = (pipeline) => {
+    lastPipeline = pipeline;
+    return { exec: async () => summaries };
+  };
+
+  return {
+    restore() {
+      TrendObservation.aggregate = originalAggregate;
+      toolFixture.restore();
+    },
+    get lastPipeline() {
+      return lastPipeline;
+    },
+    get lastQuery() {
+      return toolFixture.lastQuery;
+    },
+    get lastSort() {
+      return toolFixture.lastSort;
+    },
+  };
+}
+
+function trendSummary({
+  toolId,
+  source = "github",
+  signalType = "stars_total",
+  sourceEventId = "owner/repository",
+  observationCount = 3,
+  firstMeasurement = 100,
+  lastMeasurement = 125,
+  firstObservedAt = "2026-10-24T12:00:00.000Z",
+  lastObservedAt = "2026-10-26T11:00:00.000Z",
+  conflictingObservationCount = 0,
+} = {}) {
+  return {
+    toolId,
+    source,
+    signalType,
+    sourceEventId,
+    observationCount,
+    firstMeasurement,
+    firstObservedAt: new Date(firstObservedAt),
+    lastMeasurement,
+    lastObservedAt: new Date(lastObservedAt),
+    conflictingObservationCount,
+  };
 }
 
 test("established feed is role-ranked, paginated, and excludes non-catalogue records", async () => {
@@ -614,7 +667,7 @@ test("for-you without a role uses bounded stable cursor pagination", async () =>
 });
 
 test("trending feed does not make unsupported trend claims", async () => {
-  const fixture = installToolFixture(seedFixtureRecords());
+  const fixture = installTrendFixture({ tools: seedFixtureRecords(), summaries: [] });
 
   try {
     const result = await getFeed({ type: "trending" });
@@ -624,5 +677,169 @@ test("trending feed does not make unsupported trend claims", async () => {
     });
   } finally {
     fixture.restore();
+  }
+});
+
+test("trending feed returns only increasing catalogue trends and paginates deterministically", async () => {
+  const now = new Date("2026-10-26T12:00:00.000Z");
+  const records = ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"].map((id, index) => ({
+    _id: id,
+    name: `Trend Tool ${index + 1}`,
+    source: "curated-seed",
+    validated: true,
+    searchKeywords: ["catalogue:established"],
+  }));
+  const summaries = [
+    trendSummary({ toolId: records[1]._id, firstMeasurement: 200, lastMeasurement: 260 }),
+    trendSummary({ toolId: records[0]._id, firstMeasurement: 100, lastMeasurement: 130 }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439013",
+      firstMeasurement: 100,
+      lastMeasurement: 130,
+    }),
+  ];
+  const fixture = installTrendFixture({ tools: records, summaries });
+
+  try {
+    const firstPage = await getFeed({ type: "trending", limit: 1, now });
+    assert.deepEqual(firstPage.tools.map((tool) => tool.name), ["Trend Tool 1"]);
+    assert.deepEqual(firstPage.pagination, {
+      hasMore: true,
+      nextCursor: Buffer.from(JSON.stringify({ id: records[0]._id })).toString("base64"),
+    });
+    assert.deepEqual(firstPage.tools[0].trendEvidence, {
+      status: "increasing",
+      source: "github",
+      signalType: "stars_total",
+      sourceEventId: "owner/repository",
+      growthPercent: 30,
+      from: summaries[1].firstObservedAt,
+      through: summaries[1].lastObservedAt,
+    });
+    assert.deepEqual(fixture.lastSort, { _id: 1 });
+    assert.deepEqual(fixture.lastQuery._id, {
+      $in: [records[0]._id, records[1]._id, "507f1f77bcf86cd799439013"],
+    });
+
+    const secondPage = await getFeed({
+      type: "trending",
+      limit: 1,
+      cursor: firstPage.pagination.nextCursor,
+      now,
+    });
+    assert.deepEqual(secondPage.tools.map((tool) => tool.name), ["Trend Tool 2"]);
+    assert.equal(secondPage.pagination.hasMore, false);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("trending route preserves the feed response envelope and evidence", async () => {
+  const now = new Date();
+  const tool = {
+    _id: "507f1f77bcf86cd799439021",
+    name: "Measured Trend",
+    source: "curated-seed",
+    validated: true,
+    searchKeywords: ["catalogue:established"],
+  };
+  const fixture = installTrendFixture({
+    tools: [tool],
+    summaries: [
+      trendSummary({
+        toolId: tool._id,
+        firstObservedAt: new Date(now.getTime() - 48 * 60 * 60 * 1000),
+        lastObservedAt: new Date(now.getTime() - 60 * 60 * 1000),
+        firstMeasurement: 100,
+        lastMeasurement: 120,
+      }),
+    ],
+  });
+  const app = express();
+  app.use("/", feedRoute);
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  try {
+    const address = server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/?type=trending&limit=5`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(Object.keys(body).sort(), ["pagination", "tools"]);
+    assert.equal(body.tools.length, 1);
+    assert.equal(body.tools[0].trendEvidence.status, "increasing");
+    assert.deepEqual(Object.keys(body.pagination).sort(), ["hasMore", "nextCursor"]);
+  } finally {
+    fixture.restore();
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("stable, decreasing, stale, conflicting, insufficient, and incompatible evidence stays out of trending", async () => {
+  const now = new Date("2026-10-26T12:00:00.000Z");
+  const summaries = [
+    trendSummary({ toolId: "507f1f77bcf86cd799439001", lastMeasurement: 109 }),
+    trendSummary({ toolId: "507f1f77bcf86cd799439002", firstMeasurement: 150, lastMeasurement: 100 }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439003",
+      lastObservedAt: "2026-10-23T12:00:00.000Z",
+    }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439004",
+      conflictingObservationCount: 1,
+    }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439005",
+      observationCount: 2,
+    }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439006",
+      source: "hackernews",
+      signalType: "story_score",
+    }),
+  ];
+  const fixture = installTrendFixture({ tools: [], summaries });
+
+  try {
+    const result = await getFeed({ type: "trending", now });
+    assert.deepEqual(result, {
+      tools: [],
+      pagination: { hasMore: false, nextCursor: null },
+    });
+    assert.equal(fixture.lastQuery, undefined);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("trend observation query groups duplicate timestamps and compares within a bounded window", () => {
+  const now = new Date("2026-10-26T12:00:00.000Z");
+  const pipeline = buildTrendObservationPipeline(now);
+  const initialMatch = pipeline[0].$match;
+  assert.deepEqual(initialMatch.observedAt, {
+    $gte: new Date("2026-10-19T12:00:00.000Z"),
+    $lte: now,
+  });
+  assert.ok(pipeline.some((stage) => stage.$group?._id?.observedAt === "$observedAt"));
+  assert.ok(pipeline.some((stage) => stage.$group?.measurements?.$addToSet === "$measurement"));
+  assert.ok(pipeline.some((stage) => stage.$group?.conflictingObservationCount));
+});
+
+test("trending integration does not affect established, popular, or for-you feeds", async () => {
+  const originalAggregate = TrendObservation.aggregate;
+  TrendObservation.aggregate = () => {
+    throw new Error("trend observations must not be queried for other feeds");
+  };
+  const fixture = installToolFixture(seedFixtureRecords());
+
+  try {
+    assert.ok((await getFeed({ type: "established", limit: 1 })).tools.length);
+    assert.ok((await getFeed({ type: "popular", limit: 1 })).tools.length === 0);
+    assert.ok((await getFeed({ type: "for_you", limit: 1 })).tools.length);
+  } finally {
+    fixture.restore();
+    TrendObservation.aggregate = originalAggregate;
   }
 });
