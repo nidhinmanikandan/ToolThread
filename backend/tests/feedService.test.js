@@ -9,11 +9,28 @@ const { collectSeedTools } = require("../scripts/seedTools");
 const toolsByRole = require("../data/tools");
 
 function matchesCondition(value, condition) {
+  if (condition instanceof RegExp) {
+    return Array.isArray(value)
+      ? value.some((item) => condition.test(item))
+      : typeof value === "string" && condition.test(value);
+  }
+
   if (condition && typeof condition === "object" && !(condition instanceof Date)) {
     if (condition.$lt !== undefined) return value < condition.$lt;
+    if (condition.$gt !== undefined) return value > condition.$gt;
+    if (condition.$in !== undefined) {
+      return condition.$in.some((item) =>
+        Array.isArray(value) ? value.includes(item) : String(value) === String(item),
+      );
+    }
     if (condition.$regex !== undefined) {
-      const regex = new RegExp(condition.$regex, condition.$options);
-      return Array.isArray(value) && value.some((item) => regex.test(item));
+      const regex =
+        condition.$regex instanceof RegExp
+          ? condition.$regex
+          : new RegExp(condition.$regex, condition.$options);
+      return Array.isArray(value)
+        ? value.some((item) => regex.test(item))
+        : typeof value === "string" && regex.test(value);
     }
   }
 
@@ -23,6 +40,7 @@ function matchesCondition(value, condition) {
 function matchesQuery(record, query) {
   return Object.entries(query).every(([key, condition]) => {
     if (key === "$or") return condition.some((clause) => matchesQuery(record, clause));
+    if (key === "$and") return condition.every((clause) => matchesQuery(record, clause));
     return matchesCondition(record[key], condition);
   });
 }
@@ -84,7 +102,7 @@ function installToolFixture(records) {
 function seedFixtureRecords() {
   return collectSeedTools(toolsByRole).map((tool, index) => ({
     ...tool,
-    _id: String(index + 1).padStart(3, "0"),
+    _id: String(index + 1).padStart(24, "0"),
     createdAt: new Date("2026-10-25T00:00:00.000Z"),
     githubStars: 0,
   }));
@@ -178,6 +196,68 @@ test("established feed combines role and category filters and handles empty resu
   }
 });
 
+test("established ranking prioritizes role relevance over unrelated star counts", async () => {
+  const fixture = installToolFixture([
+    {
+      _id: "000000000000000000000001",
+      name: "General Product",
+      category: "Design Productivity",
+      source: "curated-seed",
+      validated: true,
+      githubStars: 900000,
+      searchKeywords: ["catalogue:established"],
+    },
+    {
+      _id: "000000000000000000000002",
+      name: "Figma",
+      category: "Design Tool",
+      source: "curated-seed",
+      validated: true,
+      githubStars: 0,
+      tags: ["ui design", "ux design"],
+      searchKeywords: ["role:ui/ux designer", "catalogue:established"],
+    },
+  ]);
+
+  try {
+    const result = await getFeed({
+      type: "established",
+      role: "UI/UX Designer",
+      limit: 2,
+    });
+    assert.deepEqual(result.tools.map((tool) => tool.name), ["Figma", "General Product"]);
+    assert.ok(fixture.lastQuery.$and);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("established feed without a role uses bounded stable cursor pagination", async () => {
+  const fixture = installToolFixture(seedFixtureRecords());
+
+  try {
+    const firstPage = await getFeed({ type: "established", limit: 3 });
+    assert.equal(firstPage.tools.length, 3);
+    assert.deepEqual(fixture.lastSort, { _id: -1 });
+    assert.ok(firstPage.pagination.nextCursor);
+
+    const secondPage = await getFeed({
+      type: "established",
+      limit: 3,
+      cursor: firstPage.pagination.nextCursor,
+    });
+    assert.equal(secondPage.tools.length, 3);
+    assert.ok(
+      firstPage.tools.every(
+        (firstTool) => !secondPage.tools.some((secondTool) => secondTool._id === firstTool._id),
+      ),
+    );
+    assert.deepEqual(fixture.lastQuery._id, { $lt: firstPage.tools[2]._id });
+  } finally {
+    fixture.restore();
+  }
+});
+
 test("personalized feed ranks established tools for designer and AI/ML profile aliases", async () => {
   const fixture = installToolFixture(seedFixtureRecords());
 
@@ -232,7 +312,7 @@ test("ranking tolerates missing and malformed optional metadata", async () => {
   ]);
 
   try {
-    const result = await getFeed({ type: "for_you", role: "Data Analyst" });
+    const result = await getFeed({ type: "for_you" });
     assert.equal(result.tools.length, 1);
     assert.equal(typeof result.tools[0].forYouScore, "number");
   } finally {
@@ -246,6 +326,8 @@ test("popular feed keeps category filtering, star sorting, and cursor pagination
     { _id: "00000000000000000000000b", name: "B", category: "Design", validated: true, githubStars: 20 },
     { _id: "00000000000000000000000c", name: "C", category: "Design", validated: true, githubStars: 10 },
     { _id: "00000000000000000000000d", name: "D", category: "Data", validated: true, githubStars: 100 },
+    { _id: "00000000000000000000000e", name: "Zero stars", category: "Design", validated: true, githubStars: 0 },
+    { _id: "00000000000000000000000f", name: "Missing stars", category: "Design", validated: true },
   ];
   const fixture = installToolFixture(records);
 
@@ -255,6 +337,7 @@ test("popular feed keeps category filtering, star sorting, and cursor pagination
     assert.equal(firstPage.pagination.hasMore, true);
     assert.deepEqual(fixture.lastSort, { githubStars: -1, _id: -1 });
     assert.equal(fixture.lastQuery.category, "Design");
+    assert.deepEqual(fixture.lastQuery.githubStars, { $gt: 0 });
 
     const secondPage = await getFeed({
       type: "popular",
@@ -265,6 +348,21 @@ test("popular feed keeps category filtering, star sorting, and cursor pagination
     assert.deepEqual(secondPage.tools.map((tool) => tool.name), ["C"]);
     assert.equal(secondPage.pagination.hasMore, false);
     assert.equal(secondPage.pagination.nextCursor, null);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("popular feed returns no records when no positive popularity signal exists", async () => {
+  const fixture = installToolFixture([
+    { _id: "1", name: "Unknown popularity", validated: true },
+    { _id: "2", name: "Zero stars", validated: true, githubStars: 0 },
+  ]);
+
+  try {
+    const result = await getFeed({ type: "popular" });
+    assert.deepEqual(result.tools, []);
+    assert.deepEqual(result.pagination, { hasMore: false, nextCursor: null });
   } finally {
     fixture.restore();
   }
@@ -338,6 +436,62 @@ test("popular ordering is deterministic for equal popularity values", async () =
       cursor: first.pagination.nextCursor,
     });
     assert.deepEqual(second.tools.map((tool) => tool._id), ["000000000000000000000001"]);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("for-you role results paginate without duplicates and use a role candidate filter", async () => {
+  const fixture = installToolFixture(seedFixtureRecords());
+
+  try {
+    const firstPage = await getFeed({
+      type: "for_you",
+      role: "Data Analyst",
+      limit: 2,
+    });
+    assert.equal(firstPage.tools.length, 2);
+    assert.ok(fixture.lastQuery.$and);
+    assert.ok(firstPage.pagination.nextCursor);
+
+    const secondPage = await getFeed({
+      type: "for_you",
+      role: "Data Analyst",
+      limit: 2,
+      cursor: firstPage.pagination.nextCursor,
+    });
+    assert.equal(secondPage.tools.length, 2);
+    assert.ok(
+      firstPage.tools.every(
+        (firstTool) => !secondPage.tools.some((secondTool) => secondTool._id === firstTool._id),
+      ),
+    );
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("for-you without a role uses bounded stable cursor pagination", async () => {
+  const fixture = installToolFixture(seedFixtureRecords());
+
+  try {
+    const firstPage = await getFeed({ type: "for_you", limit: 3 });
+    assert.equal(firstPage.tools.length, 3);
+    assert.deepEqual(fixture.lastSort, { _id: -1 });
+    assert.ok(firstPage.pagination.nextCursor);
+
+    const secondPage = await getFeed({
+      type: "for_you",
+      limit: 3,
+      cursor: firstPage.pagination.nextCursor,
+    });
+    assert.equal(secondPage.tools.length, 3);
+    assert.ok(
+      firstPage.tools.every(
+        (firstTool) => !secondPage.tools.some((secondTool) => secondTool._id === firstTool._id),
+      ),
+    );
+    assert.deepEqual(fixture.lastQuery._id, { $lt: firstPage.tools[2]._id });
   } finally {
     fixture.restore();
   }
