@@ -137,8 +137,8 @@ async function run({
 }
 
 if (require.main === module) {
-  run().catch(() => {
-    console.error("Tool seed failed. Check MONGO_URI configuration and MongoDB connectivity.");
+  run().catch((error) => {
+    console.error("Tool seed or search index refresh failed:", error.message);
     process.exitCode = 1;
   });
 }

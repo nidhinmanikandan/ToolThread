@@ -268,7 +268,7 @@ Start with the curated baseline and profile-aware feed, not more collectors. The
 
 ## 11. Self-hosted search architecture decision
 
-**Status:** Approved architecture; implementation deferred.
+**Status:** Approved architecture; MongoDB-to-Meilisearch indexing and reindexing implemented; search API deferred.
 **Decision:** MongoDB remains the authoritative catalogue and Meilisearch is a private, derived index used to answer user search queries. Search queries go to the self-hosted Meilisearch service through the backend; they do not call Gemini or an external search API.
 
 ### Search document
@@ -314,6 +314,8 @@ MongoDB writes are authoritative; Meilisearch writes are asynchronous and idempo
 2. Keep the index current from MongoDB catalogue changes, including every insert, update, transition out of eligibility, and delete. Prefer a MongoDB change stream with a persisted resume token and process events in order; re-read the current `Tool` by ID before upserting, and delete its search document when it no longer meets the approval gate or no longer exists. Advance the resume token only after the corresponding Meilisearch operation succeeds.
 3. If the deployed MongoDB topology cannot support change streams, use a durable outbox written alongside catalogue changes instead; do not substitute a best-effort in-memory queue. Retry transient index failures with bounded backoff and observable logging/metrics.
 4. Run full reindex/reconciliation as the recovery mechanism for missed events, index loss, or mapping/settings changes. Search documents are rebuildable and never become the source of truth.
+
+The initial implementation synchronizes the backend’s known Tool write paths and provides `npm run search:reindex` as a safe full reconciliation command. It does not yet run a change-stream worker or durable outbox; MongoDB writes made outside those paths require a reindex. Add a persisted change stream or durable outbox before relying on arbitrary external MongoDB writers.
 
 ### Search API response
 

@@ -48,4 +48,6 @@ Meilisearch is self-hosted for local search development. MongoDB remains the sou
    The service listens on `http://localhost:7700` and stores its data in a named Docker volume.
 4. Start the backend from `backend/` with `npm start`. Check the service at `http://localhost:5000/api/health/meilisearch`; it returns `503` while Meilisearch is not configured or unavailable.
 
+To safely rebuild the Meilisearch tools index from approved MongoDB `Tool` records, run `npm run search:reindex` from `backend/`. The command builds a staging index and swaps it into place only after indexing succeeds; it does not modify MongoDB records.
+
 Stop the service with `docker compose --env-file backend/.env down`. Keep `backend/.env` private; neither the Meilisearch master key nor the backend API key belongs in frontend configuration.

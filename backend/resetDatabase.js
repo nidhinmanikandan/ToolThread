@@ -12,15 +12,17 @@ async function reset() {
   await CandidateTool.deleteMany({});
   await Tool.deleteMany({});
 
+  let searchRebuildFailed = false;
   try {
     await rebuildToolSearchIndex();
   } catch (error) {
     console.error("Meilisearch rebuild failed after database reset:", error.message);
+    searchRebuildFailed = true;
   }
 
   console.log("Database cleared.");
 
-  process.exit(0);
+  process.exit(searchRebuildFailed ? 1 : 0);
 }
 
 reset().catch(console.error);
