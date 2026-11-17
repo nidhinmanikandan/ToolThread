@@ -1,4 +1,6 @@
 const Tool = require("../models/Tool");
+const TrendObservation = require("../models/TrendObservation");
+const { calculateTrendSummary, LOOKBACK_MS } = require("./trendService");
 
 const ALLOWED_TYPES = [
   "new",
@@ -73,46 +75,109 @@ const ROLE_ALIASES = {
 function matchKeywords(tool, keywords) {
   const strings = (value) =>
     Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
-  const searchableText = [
+  const normalize = (value) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .replace(/\s+/g, " ");
+  const primaryText = [
     typeof tool.name === "string" ? tool.name : "",
     typeof tool.category === "string" ? tool.category : "",
-    typeof tool.description === "string" ? tool.description : "",
     ...strings(tool.tags),
     ...strings(tool.platforms),
-    ...strings(tool.searchKeywords),
-  ].join(" ").toLowerCase();
+    ...strings(tool.searchKeywords).filter((keyword) => !keyword.startsWith("role:")),
+  ]
+    .map(normalize)
+    .join(" ");
+  const descriptionText =
+    typeof tool.description === "string" ? normalize(tool.description) : "";
+  const matchedKeywords = keywords.filter((keyword) => {
+    const normalizedKeyword = normalize(keyword);
+    return normalizedKeyword && ` ${primaryText} `.includes(` ${normalizedKeyword} `);
+  }).length;
 
-  let matches = 0;
-  for (const kw of keywords) {
-    if (searchableText.includes(kw)) {
-      matches++;
+  if (matchedKeywords >= 3) return 1;
+  if (matchedKeywords === 2) return 0.85;
+  if (matchedKeywords === 1) return 0.7;
+
+  const descriptionMatches = keywords.filter((keyword) => {
+    const normalizedKeyword = normalize(keyword);
+    return normalizedKeyword && ` ${descriptionText} `.includes(` ${normalizedKeyword} `);
+  }).length;
+  if (descriptionMatches >= 2) return 0.55;
+  if (descriptionMatches === 1) return 0.4;
+  return 0.1;
+}
+
+function normalizeRole(roleStr) {
+  return roleStr.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function getRoleKeywords(roleStr) {
+  const normalizedRole = normalizeRole(roleStr);
+  const aliases = ROLE_ALIASES[normalizedRole] || [normalizedRole];
+  const keywords = new Set();
+
+  for (const alias of aliases) {
+    for (const keyword of ROLE_KEYWORDS[alias] || []) {
+      keywords.add(keyword);
     }
   }
+  if (keywords.size === 0) {
+    for (const word of normalizedRole.split(/[^a-z0-9]+/).filter((item) => item.length > 2)) {
+      keywords.add(word);
+    }
+  }
+  return { aliases, keywords: Array.from(keywords) };
+}
 
-  if (matches >= 3) return 1.0;
-  if (matches === 2) return 0.8;
-  if (matches === 1) return 0.6;
-  return 0.1;
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildRoleCandidateFilter(roleStr) {
+  if (typeof roleStr !== "string" || !roleStr.trim()) return null;
+
+  const { aliases, keywords } = getRoleKeywords(roleStr);
+  const clauses = [
+    {
+      searchKeywords: {
+        $in: aliases.map((alias) => `role:${alias}`),
+      },
+    },
+  ];
+  if (keywords.length > 0) {
+    const pattern = keywords
+      .map((keyword) => escapeRegex(keyword).replace(/\s+/g, "\\s+"))
+      .join("|");
+    const expression = new RegExp(`(^|[^a-z0-9])(?:${pattern})($|[^a-z0-9])`, "i");
+    for (const field of ["name", "category", "description", "tags", "platforms", "searchKeywords"]) {
+      clauses.push({ [field]: expression });
+    }
+  }
+  return { $or: clauses };
+}
+
+function buildCatalogueFilter() {
+  return {
+    $or: [
+      { source: "curated-seed" },
+      { searchKeywords: { $regex: "^catalogue:established$" } },
+    ],
+  };
 }
 
 function calculateRoleRelevance(tool, roleStr) {
   if (typeof roleStr !== "string" || !roleStr.trim()) return 0.5;
-  const normalizedRole = String(roleStr).toLowerCase().trim().replace(/\s+/g, " ");
+  const normalizedRole = normalizeRole(roleStr);
   const taggedRoles = (Array.isArray(tool.searchKeywords) ? tool.searchKeywords : [])
     .filter((keyword) => typeof keyword === "string")
     .filter((keyword) => keyword.startsWith("role:"))
     .map((keyword) => keyword.slice("role:".length).trim());
-  const roleAliases = ROLE_ALIASES[normalizedRole] || [normalizedRole];
+  const { aliases: roleAliases, keywords } = getRoleKeywords(roleStr);
   if (taggedRoles.some((taggedRole) => roleAliases.includes(taggedRole))) {
     return 1.0;
-  }
-
-  const keywords = ROLE_KEYWORDS[normalizedRole];
-
-  if (!keywords || keywords.length === 0) {
-    const words = normalizedRole.split(/\s+/).filter(w => w.length > 2);
-    if (words.length === 0) return 0.5;
-    return matchKeywords(tool, words);
   }
 
   return matchKeywords(tool, keywords);
@@ -121,13 +186,18 @@ function calculateRoleRelevance(tool, roleStr) {
 function calculateForYouScore(tool, roleStr) {
   const R = calculateRoleRelevance(tool, roleStr);
   const stars = Number(tool.githubStars) || 0;
-  const popularity = Math.min(1.0, Math.log10(stars + 1) / 5.5);
-  const establishedBonus = tool.source === "curated-seed" ? 0.1 : 0;
-  const finalScore = (R * 0.8) + (popularity * 0.1) + establishedBonus;
+  const hasPopularitySignal = Number.isFinite(stars) && stars > 0;
+  const popularity = hasPopularitySignal ? Math.min(1, Math.log10(stars + 1) / 5.5) : 0;
+  const establishedBonus = tool.source === "curated-seed" ? 0.05 : 0;
+  const finalScore = (R * 0.85) + (popularity * 0.1) + establishedBonus;
   return Number(finalScore.toFixed(4));
 }
 
-function rankAndPaginate({ candidates, role, limit, cursor, scoreKey, scoreFor }) {
+function compareIdsDescending(left, right) {
+  return String(right._id).localeCompare(String(left._id));
+}
+
+function rankAndPaginate({ candidates, role, limit, cursor, scoreKey, scoreFor, compare }) {
   const rankedTools = candidates
     .map((tool) => ({
       ...tool,
@@ -135,7 +205,7 @@ function rankAndPaginate({ candidates, role, limit, cursor, scoreKey, scoreFor }
     }))
     .sort((a, b) => {
       if (b.rankingScore !== a.rankingScore) return b.rankingScore - a.rankingScore;
-      return String(b._id).localeCompare(String(a._id));
+      return compare ? compare(a, b) : compareIdsDescending(a, b);
     });
 
   let startIndex = 0;
@@ -177,6 +247,104 @@ function encodeCursor(payload) {
   return Buffer.from(JSON.stringify(payload)).toString("base64");
 }
 
+function buildTrendObservationPipeline(now) {
+  const observedAtEnd = new Date(now);
+  const observedAtStart = new Date(observedAtEnd.getTime() - LOOKBACK_MS);
+  return [
+    {
+      $match: {
+        toolId: { $type: "objectId" },
+        sourceEventId: { $type: "string", $regex: "\\S" },
+        observedAt: { $gte: observedAtStart, $lte: observedAtEnd },
+        $or: [
+          { source: "github", signalType: "stars_total" },
+          { source: "npm", signalType: "weekly_downloads" },
+        ],
+      },
+    },
+    {
+      $group: {
+        _id: {
+          toolId: "$toolId",
+          source: "$source",
+          signalType: "$signalType",
+          sourceEventId: "$sourceEventId",
+          observedAt: "$observedAt",
+        },
+        measurements: { $addToSet: "$measurement" },
+        invalidMeasurements: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $isNumber: "$measurement" },
+                  { $gte: ["$measurement", 0] },
+                  { $lte: ["$measurement", Number.MAX_VALUE] },
+                ],
+              },
+              0,
+              1,
+            ],
+          },
+        },
+      },
+    },
+    {
+      $sort: {
+        "_id.toolId": 1,
+        "_id.source": 1,
+        "_id.signalType": 1,
+        "_id.sourceEventId": 1,
+        "_id.observedAt": 1,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          toolId: "$_id.toolId",
+          source: "$_id.source",
+          signalType: "$_id.signalType",
+          sourceEventId: "$_id.sourceEventId",
+        },
+        observationCount: { $sum: 1 },
+        firstObservedAt: { $first: "$_id.observedAt" },
+        firstMeasurements: { $first: "$measurements" },
+        lastObservedAt: { $last: "$_id.observedAt" },
+        lastMeasurements: { $last: "$measurements" },
+        conflictingObservationCount: {
+          $sum: {
+            $cond: [
+              {
+                $or: [
+                  { $gt: [{ $size: "$measurements" }, 1] },
+                  { $gt: ["$invalidMeasurements", 0] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        toolId: "$_id.toolId",
+        source: "$_id.source",
+        signalType: "$_id.signalType",
+        sourceEventId: "$_id.sourceEventId",
+        observationCount: 1,
+        firstObservedAt: 1,
+        firstMeasurement: { $arrayElemAt: ["$firstMeasurements", 0] },
+        lastObservedAt: 1,
+        lastMeasurement: { $arrayElemAt: ["$lastMeasurements", 0] },
+        conflictingObservationCount: 1,
+      },
+    },
+  ];
+}
+
 function decodeCursor(cursorStr, feedType) {
   try {
     if (typeof cursorStr !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(cursorStr)) {
@@ -195,7 +363,12 @@ function decodeCursor(cursorStr, feedType) {
     }
 
     if (
-      (feedType === "new" || feedType === "popular") &&
+      (feedType === "new" ||
+        feedType === "popular" ||
+        feedType === "established" ||
+        feedType === "for_you" ||
+        feedType === "recommendations" ||
+        feedType === "trending") &&
       !/^[a-f\d]{24}$/i.test(payload.id)
     ) {
       throw new Error("Invalid cursor id");
@@ -221,7 +394,7 @@ function decodeCursor(cursorStr, feedType) {
   }
 }
 
-async function getFeed({ type = "established", role, category, limit = 12, cursor }) {
+async function getFeed({ type = "established", role, category, limit = 12, cursor, now = new Date() }) {
   if (type !== undefined && typeof type !== "string") {
     throw new Error("Invalid feed type. Type must be a string");
   }
@@ -262,10 +435,26 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
   }
 
   if (feedType === "established") {
-    query.$or = [
-      { source: "curated-seed" },
-      { searchKeywords: { $regex: "^catalogue:established$" } },
-    ];
+    Object.assign(query, buildCatalogueFilter());
+    if (typeof role === "string" && role.trim()) {
+      query.$and = [buildRoleCandidateFilter(role)];
+    } else {
+      if (decodedCursor) {
+        query._id = { $lt: decodedCursor.id };
+      }
+      const results = await Tool.find(query)
+        .sort({ _id: -1 })
+        .limit(parsedLimit + 1)
+        .lean();
+      return rankAndPaginate({
+        candidates: results,
+        role,
+        limit: parsedLimit,
+        cursor: decodedCursor,
+        scoreKey: "relevanceScore",
+        scoreFor: () => 0.5,
+      });
+    }
     const allCandidates = await Tool.find(query).lean();
     return rankAndPaginate({
       candidates: allCandidates,
@@ -273,13 +462,42 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
       limit: parsedLimit,
       cursor: decodedCursor,
       scoreKey: "relevanceScore",
-      scoreFor: (tool, profileRole) =>
-        calculateRoleRelevance(tool, profileRole) * 0.9 +
-        Math.min(1, Math.log10((Number(tool.githubStars) || 0) + 1) / 5.5) * 0.1,
+      scoreFor: (tool, profileRole) => calculateRoleRelevance(tool, profileRole),
     });
   }
 
   if (feedType === "for_you" || feedType === "recommendations") {
+    Object.assign(query, buildCatalogueFilter());
+    if (typeof role === "string" && role.trim()) {
+      const roleFilter = buildRoleCandidateFilter(role);
+      query.$and = [roleFilter];
+    } else {
+      if (decodedCursor) {
+        query._id = { $lt: decodedCursor.id };
+      }
+      const results = await Tool.find(query)
+        .sort({ _id: -1 })
+        .limit(parsedLimit + 1)
+        .lean();
+      const hasMore = results.length > parsedLimit;
+      const tools = hasMore ? results.slice(0, parsedLimit) : results;
+      return {
+        tools: tools.map((tool) => ({
+          ...tool,
+          forYouScore: calculateForYouScore(tool, role),
+        })),
+        pagination: {
+          hasMore,
+          nextCursor:
+            hasMore && tools.length > 0
+              ? encodeCursor({
+                  forYouScore: calculateForYouScore(tools[tools.length - 1], role),
+                  id: String(tools[tools.length - 1]._id),
+                })
+              : null,
+        },
+      };
+    }
     const allCandidates = await Tool.find(query).lean();
     return rankAndPaginate({
       candidates: allCandidates,
@@ -292,11 +510,74 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
   }
 
   if (feedType === "trending") {
+    const summaries = await TrendObservation.aggregate(buildTrendObservationPipeline(now)).exec();
+    const eligible = summaries
+      .map((summary) => ({
+        summary,
+        trend: calculateTrendSummary(summary, now),
+      }))
+      .filter(({ trend }) => trend.status === "increasing")
+      .sort((left, right) => {
+        const toolComparison = String(left.summary.toolId).localeCompare(String(right.summary.toolId));
+        if (toolComparison !== 0) return toolComparison;
+        const sourceComparison = left.summary.source.localeCompare(right.summary.source);
+        if (sourceComparison !== 0) return sourceComparison;
+        const signalComparison = left.summary.signalType.localeCompare(right.summary.signalType);
+        if (signalComparison !== 0) return signalComparison;
+        return left.summary.sourceEventId.localeCompare(right.summary.sourceEventId);
+      });
+    const trendByToolId = new Map();
+    for (const { summary, trend } of eligible) {
+      const toolId = String(summary.toolId);
+      if (!trendByToolId.has(toolId)) {
+        trendByToolId.set(toolId, {
+          status: trend.status,
+          source: summary.source,
+          signalType: summary.signalType,
+          sourceEventId: summary.sourceEventId,
+          growthPercent: trend.growthPercent,
+          from: summary.firstObservedAt,
+          through: summary.lastObservedAt,
+        });
+      }
+    }
+
+    if (trendByToolId.size === 0) {
+      return {
+        tools: [],
+        pagination: {
+          hasMore: false,
+          nextCursor: null,
+        },
+      };
+    }
+
+    const trendQuery = { ...query };
+    Object.assign(trendQuery, buildCatalogueFilter());
+    trendQuery._id = { $in: Array.from(trendByToolId.keys()) };
+    if (typeof role === "string" && role.trim()) {
+      trendQuery.$and = [buildRoleCandidateFilter(role)];
+    }
+    if (decodedCursor) {
+      trendQuery.$and = [...(trendQuery.$and || []), { _id: { $gt: decodedCursor.id } }];
+    }
+    const results = await Tool.find(trendQuery)
+      .sort({ _id: 1 })
+      .limit(parsedLimit + 1)
+      .lean();
+    const hasMore = results.length > parsedLimit;
+    const tools = hasMore ? results.slice(0, parsedLimit) : results;
+    const page = tools.map((tool) => ({
+      ...tool,
+      trendEvidence: trendByToolId.get(String(tool._id)),
+    }));
+    const lastItem = tools[tools.length - 1];
+
     return {
-      tools: [],
+      tools: page,
       pagination: {
-        hasMore: false,
-        nextCursor: null,
+        hasMore,
+        nextCursor: hasMore && lastItem ? encodeCursor({ id: String(lastItem._id) }) : null,
       },
     };
   }
@@ -313,6 +594,7 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
     }
   } else if (feedType === "popular") {
     sortOption = { githubStars: -1, _id: -1 };
+    query.githubStars = { $gt: 0 };
     if (decodedCursor) {
       const cursorStars = Number(decodedCursor.githubStars) || 0;
       query.$or = [
@@ -356,5 +638,6 @@ async function getFeed({ type = "established", role, category, limit = 12, curso
 }
 
 module.exports = {
+  buildTrendObservationPipeline,
   getFeed,
 };

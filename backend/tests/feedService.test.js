@@ -3,17 +3,35 @@ const assert = require("node:assert/strict");
 const express = require("express");
 const http = require("node:http");
 const Tool = require("../models/Tool");
-const { getFeed } = require("../services/feedService");
+const TrendObservation = require("../models/TrendObservation");
+const { buildTrendObservationPipeline, getFeed } = require("../services/feedService");
 const feedRoute = require("../routes/feed");
 const { collectSeedTools } = require("../scripts/seedTools");
 const toolsByRole = require("../data/tools");
 
 function matchesCondition(value, condition) {
+  if (condition instanceof RegExp) {
+    return Array.isArray(value)
+      ? value.some((item) => condition.test(item))
+      : typeof value === "string" && condition.test(value);
+  }
+
   if (condition && typeof condition === "object" && !(condition instanceof Date)) {
     if (condition.$lt !== undefined) return value < condition.$lt;
+    if (condition.$gt !== undefined) return value > condition.$gt;
+    if (condition.$in !== undefined) {
+      return condition.$in.some((item) =>
+        Array.isArray(value) ? value.includes(item) : String(value) === String(item),
+      );
+    }
     if (condition.$regex !== undefined) {
-      const regex = new RegExp(condition.$regex, condition.$options);
-      return Array.isArray(value) && value.some((item) => regex.test(item));
+      const regex =
+        condition.$regex instanceof RegExp
+          ? condition.$regex
+          : new RegExp(condition.$regex, condition.$options);
+      return Array.isArray(value)
+        ? value.some((item) => regex.test(item))
+        : typeof value === "string" && regex.test(value);
     }
   }
 
@@ -23,6 +41,7 @@ function matchesCondition(value, condition) {
 function matchesQuery(record, query) {
   return Object.entries(query).every(([key, condition]) => {
     if (key === "$or") return condition.some((clause) => matchesQuery(record, clause));
+    if (key === "$and") return condition.every((clause) => matchesQuery(record, clause));
     return matchesCondition(record[key], condition);
   });
 }
@@ -53,7 +72,9 @@ function installToolFixture(records) {
               const rightValue = right[field] ?? 0;
               if (leftValue === rightValue) continue;
               if (leftValue instanceof Date && rightValue instanceof Date) {
-                return direction * (leftValue.getTime() - rightValue.getTime());
+                const dateDifference = leftValue.getTime() - rightValue.getTime();
+                if (dateDifference !== 0) return direction * dateDifference;
+                continue;
               }
               return direction * (leftValue < rightValue ? -1 : 1);
             }
@@ -84,10 +105,62 @@ function installToolFixture(records) {
 function seedFixtureRecords() {
   return collectSeedTools(toolsByRole).map((tool, index) => ({
     ...tool,
-    _id: String(index + 1).padStart(3, "0"),
+    _id: String(index + 1).padStart(24, "0"),
     createdAt: new Date("2026-10-25T00:00:00.000Z"),
     githubStars: 0,
   }));
+}
+
+function installTrendFixture({ tools, summaries }) {
+  const toolFixture = installToolFixture(tools);
+  const originalAggregate = TrendObservation.aggregate;
+  let lastPipeline;
+  TrendObservation.aggregate = (pipeline) => {
+    lastPipeline = pipeline;
+    return { exec: async () => summaries };
+  };
+
+  return {
+    restore() {
+      TrendObservation.aggregate = originalAggregate;
+      toolFixture.restore();
+    },
+    get lastPipeline() {
+      return lastPipeline;
+    },
+    get lastQuery() {
+      return toolFixture.lastQuery;
+    },
+    get lastSort() {
+      return toolFixture.lastSort;
+    },
+  };
+}
+
+function trendSummary({
+  toolId,
+  source = "github",
+  signalType = "stars_total",
+  sourceEventId = "owner/repository",
+  observationCount = 3,
+  firstMeasurement = 100,
+  lastMeasurement = 125,
+  firstObservedAt = "2026-10-24T12:00:00.000Z",
+  lastObservedAt = "2026-10-26T11:00:00.000Z",
+  conflictingObservationCount = 0,
+} = {}) {
+  return {
+    toolId,
+    source,
+    signalType,
+    sourceEventId,
+    observationCount,
+    firstMeasurement,
+    firstObservedAt: new Date(firstObservedAt),
+    lastMeasurement,
+    lastObservedAt: new Date(lastObservedAt),
+    conflictingObservationCount,
+  };
 }
 
 test("established feed is role-ranked, paginated, and excludes non-catalogue records", async () => {
@@ -178,6 +251,68 @@ test("established feed combines role and category filters and handles empty resu
   }
 });
 
+test("established ranking prioritizes role relevance over unrelated star counts", async () => {
+  const fixture = installToolFixture([
+    {
+      _id: "000000000000000000000001",
+      name: "General Product",
+      category: "Design Productivity",
+      source: "curated-seed",
+      validated: true,
+      githubStars: 900000,
+      searchKeywords: ["catalogue:established"],
+    },
+    {
+      _id: "000000000000000000000002",
+      name: "Figma",
+      category: "Design Tool",
+      source: "curated-seed",
+      validated: true,
+      githubStars: 0,
+      tags: ["ui design", "ux design"],
+      searchKeywords: ["role:ui/ux designer", "catalogue:established"],
+    },
+  ]);
+
+  try {
+    const result = await getFeed({
+      type: "established",
+      role: "UI/UX Designer",
+      limit: 2,
+    });
+    assert.deepEqual(result.tools.map((tool) => tool.name), ["Figma", "General Product"]);
+    assert.ok(fixture.lastQuery.$and);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("established feed without a role uses bounded stable cursor pagination", async () => {
+  const fixture = installToolFixture(seedFixtureRecords());
+
+  try {
+    const firstPage = await getFeed({ type: "established", limit: 3 });
+    assert.equal(firstPage.tools.length, 3);
+    assert.deepEqual(fixture.lastSort, { _id: -1 });
+    assert.ok(firstPage.pagination.nextCursor);
+
+    const secondPage = await getFeed({
+      type: "established",
+      limit: 3,
+      cursor: firstPage.pagination.nextCursor,
+    });
+    assert.equal(secondPage.tools.length, 3);
+    assert.ok(
+      firstPage.tools.every(
+        (firstTool) => !secondPage.tools.some((secondTool) => secondTool._id === firstTool._id),
+      ),
+    );
+    assert.deepEqual(fixture.lastQuery._id, { $lt: firstPage.tools[2]._id });
+  } finally {
+    fixture.restore();
+  }
+});
+
 test("personalized feed ranks established tools for designer and AI/ML profile aliases", async () => {
   const fixture = installToolFixture(seedFixtureRecords());
 
@@ -217,6 +352,56 @@ test("personalized feed ranks established tools for designer and AI/ML profile a
   }
 });
 
+test("personalized feeds only include validated catalogue records", async () => {
+  const records = [
+    ...seedFixtureRecords(),
+    {
+      _id: "eeeeeeeeeeeeeeeeeeeeeeee",
+      name: "Reviewed external AI tool",
+      source: "github-search",
+      validated: true,
+      searchKeywords: ["role:ai/ml developer", "catalogue:established"],
+      githubStars: 50,
+    },
+    {
+      _id: "ffffffffffffffffffffffff",
+      name: "Unreviewed AI package",
+      source: "npm-search",
+      validated: true,
+      searchKeywords: ["role:ai/ml developer"],
+      githubStars: 100000,
+    },
+  ];
+  const fixture = installToolFixture(records);
+
+  try {
+    for (const type of ["for_you", "recommendations"]) {
+      const result = await getFeed({ type, role: "AI/ML Developer", limit: 50 });
+      assert.ok(result.tools.length > 0);
+      assert.ok(
+        result.tools.every(
+          (tool) =>
+            tool.source === "curated-seed" ||
+            tool.searchKeywords.includes("catalogue:established"),
+        ),
+      );
+      assert.ok(result.tools.some((tool) => tool.name === "Reviewed external AI tool"));
+      assert.ok(result.tools.every((tool) => tool.name !== "Unreviewed AI package"));
+    }
+
+    const unfilteredRoleFeed = await getFeed({ type: "for_you", limit: 50 });
+    assert.ok(
+      unfilteredRoleFeed.tools.every(
+        (tool) =>
+          tool.source === "curated-seed" ||
+          tool.searchKeywords.includes("catalogue:established"),
+      ),
+    );
+  } finally {
+    fixture.restore();
+  }
+});
+
 test("ranking tolerates missing and malformed optional metadata", async () => {
   const fixture = installToolFixture([
     {
@@ -232,7 +417,7 @@ test("ranking tolerates missing and malformed optional metadata", async () => {
   ]);
 
   try {
-    const result = await getFeed({ type: "for_you", role: "Data Analyst" });
+    const result = await getFeed({ type: "for_you" });
     assert.equal(result.tools.length, 1);
     assert.equal(typeof result.tools[0].forYouScore, "number");
   } finally {
@@ -246,6 +431,8 @@ test("popular feed keeps category filtering, star sorting, and cursor pagination
     { _id: "00000000000000000000000b", name: "B", category: "Design", validated: true, githubStars: 20 },
     { _id: "00000000000000000000000c", name: "C", category: "Design", validated: true, githubStars: 10 },
     { _id: "00000000000000000000000d", name: "D", category: "Data", validated: true, githubStars: 100 },
+    { _id: "00000000000000000000000e", name: "Zero stars", category: "Design", validated: true, githubStars: 0 },
+    { _id: "00000000000000000000000f", name: "Missing stars", category: "Design", validated: true },
   ];
   const fixture = installToolFixture(records);
 
@@ -255,6 +442,7 @@ test("popular feed keeps category filtering, star sorting, and cursor pagination
     assert.equal(firstPage.pagination.hasMore, true);
     assert.deepEqual(fixture.lastSort, { githubStars: -1, _id: -1 });
     assert.equal(fixture.lastQuery.category, "Design");
+    assert.deepEqual(fixture.lastQuery.githubStars, { $gt: 0 });
 
     const secondPage = await getFeed({
       type: "popular",
@@ -265,6 +453,62 @@ test("popular feed keeps category filtering, star sorting, and cursor pagination
     assert.deepEqual(secondPage.tools.map((tool) => tool.name), ["C"]);
     assert.equal(secondPage.pagination.hasMore, false);
     assert.equal(secondPage.pagination.nextCursor, null);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("new feed orders by creation time and paginates equal timestamps without duplicates", async () => {
+  const records = [
+    {
+      _id: "000000000000000000000001",
+      name: "Older",
+      validated: true,
+      createdAt: new Date("2026-10-25T09:00:00.000Z"),
+    },
+    {
+      _id: "000000000000000000000002",
+      name: "Newest first",
+      validated: true,
+      createdAt: new Date("2026-10-25T10:00:00.000Z"),
+    },
+    {
+      _id: "000000000000000000000003",
+      name: "Newest second",
+      validated: true,
+      createdAt: new Date("2026-10-25T10:00:00.000Z"),
+    },
+  ];
+  const fixture = installToolFixture(records);
+
+  try {
+    const firstPage = await getFeed({ type: "new", limit: 2 });
+    assert.deepEqual(firstPage.tools.map((tool) => tool.name), ["Newest second", "Newest first"]);
+    assert.deepEqual(fixture.lastSort, { createdAt: -1, _id: -1 });
+    assert.ok(firstPage.pagination.nextCursor);
+
+    const secondPage = await getFeed({
+      type: "new",
+      limit: 2,
+      cursor: firstPage.pagination.nextCursor,
+    });
+    assert.deepEqual(secondPage.tools.map((tool) => tool.name), ["Older"]);
+    assert.equal(secondPage.pagination.hasMore, false);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("popular feed returns no records when no positive popularity signal exists", async () => {
+  const fixture = installToolFixture([
+    { _id: "1", name: "Unknown popularity", validated: true },
+    { _id: "2", name: "Zero stars", validated: true, githubStars: 0 },
+  ]);
+
+  try {
+    const result = await getFeed({ type: "popular" });
+    assert.deepEqual(result.tools, []);
+    assert.deepEqual(result.pagination, { hasMore: false, nextCursor: null });
   } finally {
     fixture.restore();
   }
@@ -315,6 +559,29 @@ test("feed API reports unsupported page numbers and invalid sort types as client
   }
 });
 
+test("feed API preserves the established response shape for a successful request", async () => {
+  const fixture = installToolFixture(seedFixtureRecords());
+  const app = express();
+  app.use("/", feedRoute);
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  try {
+    const address = server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/?type=established&limit=2`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.tools.length, 2);
+    assert.deepEqual(Object.keys(body.pagination).sort(), ["hasMore", "nextCursor"]);
+    assert.equal(typeof body.pagination.hasMore, "boolean");
+  } finally {
+    fixture.restore();
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test("popular ordering is deterministic for equal popularity values", async () => {
   const records = [
     { _id: "000000000000000000000001", name: "First", validated: true, githubStars: 10 },
@@ -343,8 +610,64 @@ test("popular ordering is deterministic for equal popularity values", async () =
   }
 });
 
-test("trending feed does not make unsupported trend claims", async () => {
+test("for-you role results paginate without duplicates and use a role candidate filter", async () => {
   const fixture = installToolFixture(seedFixtureRecords());
+
+  try {
+    const firstPage = await getFeed({
+      type: "for_you",
+      role: "Data Analyst",
+      limit: 2,
+    });
+    assert.equal(firstPage.tools.length, 2);
+    assert.ok(fixture.lastQuery.$and);
+    assert.ok(firstPage.pagination.nextCursor);
+
+    const secondPage = await getFeed({
+      type: "for_you",
+      role: "Data Analyst",
+      limit: 2,
+      cursor: firstPage.pagination.nextCursor,
+    });
+    assert.equal(secondPage.tools.length, 2);
+    assert.ok(
+      firstPage.tools.every(
+        (firstTool) => !secondPage.tools.some((secondTool) => secondTool._id === firstTool._id),
+      ),
+    );
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("for-you without a role uses bounded stable cursor pagination", async () => {
+  const fixture = installToolFixture(seedFixtureRecords());
+
+  try {
+    const firstPage = await getFeed({ type: "for_you", limit: 3 });
+    assert.equal(firstPage.tools.length, 3);
+    assert.deepEqual(fixture.lastSort, { _id: -1 });
+    assert.ok(firstPage.pagination.nextCursor);
+
+    const secondPage = await getFeed({
+      type: "for_you",
+      limit: 3,
+      cursor: firstPage.pagination.nextCursor,
+    });
+    assert.equal(secondPage.tools.length, 3);
+    assert.ok(
+      firstPage.tools.every(
+        (firstTool) => !secondPage.tools.some((secondTool) => secondTool._id === firstTool._id),
+      ),
+    );
+    assert.deepEqual(fixture.lastQuery._id, { $lt: firstPage.tools[2]._id });
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("trending feed does not make unsupported trend claims", async () => {
+  const fixture = installTrendFixture({ tools: seedFixtureRecords(), summaries: [] });
 
   try {
     const result = await getFeed({ type: "trending" });
@@ -354,5 +677,169 @@ test("trending feed does not make unsupported trend claims", async () => {
     });
   } finally {
     fixture.restore();
+  }
+});
+
+test("trending feed returns only increasing catalogue trends and paginates deterministically", async () => {
+  const now = new Date("2026-10-26T12:00:00.000Z");
+  const records = ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"].map((id, index) => ({
+    _id: id,
+    name: `Trend Tool ${index + 1}`,
+    source: "curated-seed",
+    validated: true,
+    searchKeywords: ["catalogue:established"],
+  }));
+  const summaries = [
+    trendSummary({ toolId: records[1]._id, firstMeasurement: 200, lastMeasurement: 260 }),
+    trendSummary({ toolId: records[0]._id, firstMeasurement: 100, lastMeasurement: 130 }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439013",
+      firstMeasurement: 100,
+      lastMeasurement: 130,
+    }),
+  ];
+  const fixture = installTrendFixture({ tools: records, summaries });
+
+  try {
+    const firstPage = await getFeed({ type: "trending", limit: 1, now });
+    assert.deepEqual(firstPage.tools.map((tool) => tool.name), ["Trend Tool 1"]);
+    assert.deepEqual(firstPage.pagination, {
+      hasMore: true,
+      nextCursor: Buffer.from(JSON.stringify({ id: records[0]._id })).toString("base64"),
+    });
+    assert.deepEqual(firstPage.tools[0].trendEvidence, {
+      status: "increasing",
+      source: "github",
+      signalType: "stars_total",
+      sourceEventId: "owner/repository",
+      growthPercent: 30,
+      from: summaries[1].firstObservedAt,
+      through: summaries[1].lastObservedAt,
+    });
+    assert.deepEqual(fixture.lastSort, { _id: 1 });
+    assert.deepEqual(fixture.lastQuery._id, {
+      $in: [records[0]._id, records[1]._id, "507f1f77bcf86cd799439013"],
+    });
+
+    const secondPage = await getFeed({
+      type: "trending",
+      limit: 1,
+      cursor: firstPage.pagination.nextCursor,
+      now,
+    });
+    assert.deepEqual(secondPage.tools.map((tool) => tool.name), ["Trend Tool 2"]);
+    assert.equal(secondPage.pagination.hasMore, false);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("trending route preserves the feed response envelope and evidence", async () => {
+  const now = new Date();
+  const tool = {
+    _id: "507f1f77bcf86cd799439021",
+    name: "Measured Trend",
+    source: "curated-seed",
+    validated: true,
+    searchKeywords: ["catalogue:established"],
+  };
+  const fixture = installTrendFixture({
+    tools: [tool],
+    summaries: [
+      trendSummary({
+        toolId: tool._id,
+        firstObservedAt: new Date(now.getTime() - 48 * 60 * 60 * 1000),
+        lastObservedAt: new Date(now.getTime() - 60 * 60 * 1000),
+        firstMeasurement: 100,
+        lastMeasurement: 120,
+      }),
+    ],
+  });
+  const app = express();
+  app.use("/", feedRoute);
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  try {
+    const address = server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/?type=trending&limit=5`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(Object.keys(body).sort(), ["pagination", "tools"]);
+    assert.equal(body.tools.length, 1);
+    assert.equal(body.tools[0].trendEvidence.status, "increasing");
+    assert.deepEqual(Object.keys(body.pagination).sort(), ["hasMore", "nextCursor"]);
+  } finally {
+    fixture.restore();
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("stable, decreasing, stale, conflicting, insufficient, and incompatible evidence stays out of trending", async () => {
+  const now = new Date("2026-10-26T12:00:00.000Z");
+  const summaries = [
+    trendSummary({ toolId: "507f1f77bcf86cd799439001", lastMeasurement: 109 }),
+    trendSummary({ toolId: "507f1f77bcf86cd799439002", firstMeasurement: 150, lastMeasurement: 100 }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439003",
+      lastObservedAt: "2026-10-23T12:00:00.000Z",
+    }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439004",
+      conflictingObservationCount: 1,
+    }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439005",
+      observationCount: 2,
+    }),
+    trendSummary({
+      toolId: "507f1f77bcf86cd799439006",
+      source: "hackernews",
+      signalType: "story_score",
+    }),
+  ];
+  const fixture = installTrendFixture({ tools: [], summaries });
+
+  try {
+    const result = await getFeed({ type: "trending", now });
+    assert.deepEqual(result, {
+      tools: [],
+      pagination: { hasMore: false, nextCursor: null },
+    });
+    assert.equal(fixture.lastQuery, undefined);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("trend observation query groups duplicate timestamps and compares within a bounded window", () => {
+  const now = new Date("2026-10-26T12:00:00.000Z");
+  const pipeline = buildTrendObservationPipeline(now);
+  const initialMatch = pipeline[0].$match;
+  assert.deepEqual(initialMatch.observedAt, {
+    $gte: new Date("2026-10-19T12:00:00.000Z"),
+    $lte: now,
+  });
+  assert.ok(pipeline.some((stage) => stage.$group?._id?.observedAt === "$observedAt"));
+  assert.ok(pipeline.some((stage) => stage.$group?.measurements?.$addToSet === "$measurement"));
+  assert.ok(pipeline.some((stage) => stage.$group?.conflictingObservationCount));
+});
+
+test("trending integration does not affect established, popular, or for-you feeds", async () => {
+  const originalAggregate = TrendObservation.aggregate;
+  TrendObservation.aggregate = () => {
+    throw new Error("trend observations must not be queried for other feeds");
+  };
+  const fixture = installToolFixture(seedFixtureRecords());
+
+  try {
+    assert.ok((await getFeed({ type: "established", limit: 1 })).tools.length);
+    assert.ok((await getFeed({ type: "popular", limit: 1 })).tools.length === 0);
+    assert.ok((await getFeed({ type: "for_you", limit: 1 })).tools.length);
+  } finally {
+    fixture.restore();
+    TrendObservation.aggregate = originalAggregate;
   }
 });

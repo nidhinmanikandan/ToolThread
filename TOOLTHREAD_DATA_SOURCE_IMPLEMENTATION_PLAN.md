@@ -198,6 +198,20 @@ Permanent data should be the curated canonical tool record and compact source at
 - **Tests and acceptance:** metric deltas computed only from dated observations; duplicate polling does not count as multiple sources; missing history does not display “trending”; timestamps and source attribution are shown.
 - **Risk/rollback:** keep trend scoring configurable and disable trend labels if a source stops supplying reliable measurements. Do not add Product Hunt, Dribbble, Behance, Awwwards, or Framer scraping without verified access and permission.
 
+### Milestone 4 evidence foundation (2026-10-26)
+
+- Added `backend/models/TrendObservation.js` for dated, numeric observations linked to a catalogue tool, with source, signal type, source-event identity, and deterministic duplicate identity.
+- Added `backend/services/trendService.js`: comparisons are restricted to one tool/source/signal/event; at least three unique timestamps over 24 hours are required within a seven-day lookback; the newest must be no older than 48 hours; the first measurement must be positive; growth of at least 10% is increasing, a change between -10% and +10% is stable, and a decline of at least 10% is decreasing. Invalid, conflicting, stale, or insufficient data is not trending.
+- Added `backend/scripts/recordTrendObservations.js`. It validates JSON input and catalogue tool references, runs read-only by default, and only writes with the explicit `--write` option. Supported manual signals are GitHub total stars and npm weekly downloads; imports must include the actual source measurement time and event identity.
+- Manual workflow: save an array of `{ "toolId": "<catalogue ObjectId>", "source": "github", "signalType": "stars_total", "measurement": 1234, "observedAt": "<source observation ISO timestamp>", "sourceEventId": "<verified owner/repository>" }` records as JSON, then run `node scripts/recordTrendObservations.js <input.json>` from `backend` to validate without writing; add `--write` only after reviewing the dry run to persist observations. For npm use `source: "npm"`, `signalType: "weekly_downloads"`, and the exact package name as `sourceEventId`. Re-imports at the same event/time are idempotent, and conflicting measurements are rejected.
+- The checked-in collector pipeline does not currently provide trustworthy, persisted tool-level time series: GitHub collection is disabled in `runCollectors.js`; active HN data is story-level and not reliably linked to catalogue tools; npm weekly downloads are transient candidate metadata and are not copied into catalogue records as dated samples. No source currently supplies sufficient history by itself.
+- The `type=trending` feed now aggregates observations in MongoDB over the seven-day window, groups by tool/source/signal/event and timestamp to detect conflicting duplicate measurements, and applies the shared trend-summary classifier. It returns only increasing measurements attached to validated catalogue tools, with source/signal, event identity, growth percentage, and measured interval in `trendEvidence`. Results are ordered by tool ObjectId and cursor-paginated deterministically; tools with multiple qualifying sources use the first source/signal/event in lexical order, without ranking incomparable source metrics against each other. Stable, decreasing, stale, conflicting, malformed, or insufficient groups are excluded. No observation results still returns the existing empty `{ tools, pagination }` response.
+- A compound `{ observedAt, toolId, source, signalType, sourceEventId }` index is defined for the bounded aggregation query. Automatic index creation remains disabled; deployment must provision the index through its existing database operations rather than this feature running a migration.
+- Do not infer trends from `isTrending`, lifetime stars, HN story dates, or established-catalogue status. A manually verified tool/source identity and repeated dated measurements are required before a trend can appear.
+- Manual observation imports require source timestamps, measurement values, and event identifiers as user-supplied fields; the importer validates their shape and catalogue tool reference but does not verify them against GitHub/npm source records. Authenticity and event identity remain operator assertions until source-backed collector integration exists.
+- The obsolete `backend/tests/redditCollector.test.js` was removed during Milestone 4 remediation. Git history shows the Reddit collector was added experimentally in `489c42d` but deliberately removed as unused in `5aa3d3c`; it is absent from the active runner and the surviving test only exercised a synthetic fallback. No Reddit collector or external integration is part of this milestone.
+- No migration, collector run, scheduler, external integration, or database write was performed for this milestone.
+
 ## 8. Testing and success criteria
 
 Use fixtures and stubbed source responses for unit tests. Avoid live API tests in the normal suite. For optional Mongo integration tests, use a disposable test database and never run the collector pipeline against production data.
@@ -246,8 +260,97 @@ Start with the curated baseline and profile-aware feed, not more collectors. The
 - [ ] Expand the existing role-based seeds in `backend/data/tools.js` into reviewed catalogue records with canonical official URLs, categories, entity type, and role/use-case tags.
 - [ ] Add a repeatable seed script at `backend/scripts/seedTools.js`; upsert only reviewed records and never clear the database.
 - [ ] Extend `backend/models/Tool.js` minimally for canonical identity, role/use-case metadata, and URL verification state; defer destructive deduplication.
-- [ ] Update `backend/services/feedService.js` so established and personalized views use the catalogue and missing trend evidence does not imply trending.
+- [x] Update `backend/services/feedService.js` so established and personalized views use the catalogue and missing trend evidence does not imply trending.
 - [ ] Update `frontend/src/services/api.ts`, `frontend/src/hooks/useDashboardData.ts`, and `frontend/src/routes/discover.tsx` so labels match the requested feed.
 - [ ] Add tests for repeatable seeding, UI/UX/AI-ML/data-analyst ranking, canonical duplicate handling, pagination, and trend evidence requirements; replace the nonfunctional backend test script.
 - [ ] Keep `backend/services/aiRecommendation.js` and the roadmap flow intact for this first milestone; later constrain Gemini recommendations to canonical catalogue records.
 - [ ] Leave Product Hunt and design-platform ingestion out of the first release until their current access and usage permissions are verified.
+
+## 11. Self-hosted search architecture decision
+
+**Status:** Approved architecture; implementation deferred.
+**Decision:** MongoDB remains the authoritative catalogue and Meilisearch is a private, derived index used to answer user search queries. Search queries go to the self-hosted Meilisearch service through the backend; they do not call Gemini or an external search API.
+
+### Search document
+
+Use the MongoDB `Tool._id` as the stable Meilisearch document primary key. Index a curated projection of each eligible `Tool`:
+
+```text
+id             string   MongoDB ObjectId serialized as a string
+name           string
+category       string
+description    string
+tags           string[]
+platforms      string[]
+searchKeywords string[]
+officialUrl    string
+logoDomain     string
+source         string
+score          number
+githubStars    number
+createdAt      ISO date string
+```
+
+The projection is deliberately limited to catalogue/search-card data. Do not copy candidate records, private review notes, source credentials, or arbitrary `CandidateTool.sources.metadata` into the search index. The backend returns only the fields needed by search results; the Meilisearch master key is never sent to the frontend.
+
+### Eligibility and the candidate workflow
+
+`CandidateTool` remains the discovery and review queue; it is never directly searchable. Only a canonical `Tool` that has passed the existing review/promotion boundary may be indexed. Preserve candidate statuses and review behavior; search synchronization must not approve candidates, promote them, or change their status.
+
+**Approval gap to resolve before public indexing:** the current audit found `CandidateTool.validationStatus` values including `pending` and `validated`, but `runValidation()` automatically processes pending candidates and `validateCandidate()` creates `Tool` records with `validated: true` when basic checks pass. The code does not currently establish a separate human approval state. Confirm that this validated transition is the product’s approval decision. If it is not, define an explicit approval gate in the existing review flow and use that gate for indexing; do not treat discovery, syntactic validation, or mere presence in MongoDB as approval. This decision must be resolved before enabling public search results.
+
+### Indexed attributes and ranking
+
+- **Searchable, in priority order:** `name`, `category`, `tags`, `platforms`, `searchKeywords`, `description`. Names and concise labels should outrank broad description matches. Configure these as Meilisearch searchable attributes rather than indexing every MongoDB field.
+- **Filterable:** `category`, `tags`, and `platforms` for user-selected facets. Enforce approval eligibility in the backend/index-maintenance path, not through a user-controlled filter.
+- **Displayed:** `id`, `name`, `category`, `description`, `tags`, `platforms`, `officialUrl`, `logoDomain`, and any explicitly chosen existing popularity metadata.
+- **Ranking:** retain Meilisearch’s text relevance (including word match, typo tolerance, and proximity) as the primary ordering. Use existing `score` and `githubStars`, if used, only as subordinate tie-breakers after text relevance. Do not let `isTrending`, raw recency, or source volume outrank a strong text match; existing trend flags and source counts are not uniformly reliable measures of relevance. Keep ranking and index settings versioned/configurable through backend code and reindex when settings change.
+
+### Index synchronization and recovery
+
+MongoDB writes are authoritative; Meilisearch writes are asynchronous and idempotent. Do not make a search-index write a prerequisite for accepting an approval or catalogue update.
+
+1. On deployment, explicitly configure the index and its searchable, filterable, displayed, and ranking settings, then run an idempotent full reindex from eligible `Tool` documents. Reindexing must also remove stale Meilisearch documents so revoked/deleted tools do not remain visible.
+2. Keep the index current from MongoDB catalogue changes, including every insert, update, transition out of eligibility, and delete. Prefer a MongoDB change stream with a persisted resume token and process events in order; re-read the current `Tool` by ID before upserting, and delete its search document when it no longer meets the approval gate or no longer exists. Advance the resume token only after the corresponding Meilisearch operation succeeds.
+3. If the deployed MongoDB topology cannot support change streams, use a durable outbox written alongside catalogue changes instead; do not substitute a best-effort in-memory queue. Retry transient index failures with bounded backoff and observable logging/metrics.
+4. Run full reindex/reconciliation as the recovery mechanism for missed events, index loss, or mapping/settings changes. Search documents are rebuildable and never become the source of truth.
+
+### Search API response
+
+Expose search through a dedicated backend endpoint (for example `GET /api/search?q=...`), leaving `/api/feed` and `/api/recommendations` behavior unchanged. Validate and bound query length, page size, offset, and supported filters on the backend; never accept arbitrary Meilisearch index names, filter expressions, or credentials from the client. A successful response should have a stable shape:
+
+```json
+{
+  "query": "design prototype",
+  "hits": [
+    {
+      "id": "MongoDB ObjectId",
+      "name": "Example tool",
+      "category": "Design",
+      "description": "Short catalogue description",
+      "tags": ["prototyping"],
+      "platforms": ["Web"],
+      "officialUrl": "https://example.com",
+      "logoDomain": "example.com"
+    }
+  ],
+  "pagination": {
+    "offset": 0,
+    "limit": 12,
+    "estimatedTotalHits": 1
+  },
+  "processingTimeMs": 4
+}
+```
+
+Return only explicitly approved/eligible catalogue documents and only the selected public fields, even if the index contains additional operational attributes. Search pagination is independent of the existing feed cursor format.
+
+### Errors and fallback
+
+- Return a clear client error for malformed query, pagination, or unsupported-filter input; do not silently coerce invalid input into a broad query.
+- Return a stable `503` search-unavailable response when Meilisearch is unavailable, the index is not ready, or indexing configuration is incomplete. Log operational details server-side without exposing keys or internal service addresses.
+- Do not silently substitute an unbounded MongoDB regex query, Gemini generation, or an external search provider. Such fallbacks would change relevance, cost, and latency and could return tools that do not meet the approval gate.
+- The frontend may offer the existing MongoDB-backed `/api/feed` browsing experience as an explicitly labeled alternative, with an availability notice and retry action; it must not present feed results as exact search matches.
+- A lagging index is eventually consistent. Document and monitor indexing delay, failed-event backlog, last successful event, and full-reindex status; remove an item from the index when approval is revoked.
+
+**Consequences:** search remains independent of recommendation generation and discovery-source availability at query time. MongoDB remains recoverable authority, while Meilisearch availability is required only for text search. Before implementation, resolve the approval-state gap and verify change-stream support in the deployment’s MongoDB topology.
