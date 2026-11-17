@@ -36,7 +36,9 @@ function createMeilisearchFixture({ failStagingWrites = false } = {}) {
     async getRawIndex(uid) {
       const index = indexes.get(uid);
       if (!index) {
-        throw { cause: { code: "index_not_found" } };
+        const error = new Error("Index not found");
+        error.cause = { code: "index_not_found" };
+        throw error;
       }
       return { primaryKey: index.primaryKey };
     },
