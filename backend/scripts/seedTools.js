@@ -4,6 +4,7 @@ const dotenv = require("dotenv");
 const mongoose = require("mongoose");
 const toolsByRole = require("../data/tools");
 const Tool = require("../models/Tool");
+const { rebuildToolSearchIndex } = require("../services/toolSearchSync");
 
 const ENV_PATHS = [
   path.resolve(__dirname, "../../.env"),
@@ -118,6 +119,8 @@ async function run({
     logger.log(
       `Seed complete: ${result.inserted} inserted, ${result.alreadyPresent} already present.`,
     );
+    const searchResult = await rebuildToolSearchIndex({ ToolModel });
+    logger.log(`Search index refreshed: ${searchResult.indexed} approved Tools indexed.`);
   } catch (error) {
     seedFailed = true;
     throw error;

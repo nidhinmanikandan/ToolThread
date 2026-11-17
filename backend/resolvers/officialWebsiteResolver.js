@@ -1,4 +1,5 @@
 const Tool = require("../models/Tool");
+const { syncToolToSearch } = require("../services/toolSearchSync");
 
 async function officialWebsiteResolver(tool) {
   if (tool.officialUrl && tool.officialUrl.trim() !== "") {
@@ -10,6 +11,12 @@ async function officialWebsiteResolver(tool) {
         lastChecked: new Date(),
       }
     );
+
+    try {
+      await syncToolToSearch(tool._id);
+    } catch (error) {
+      console.error(`Meilisearch sync failed for Tool "${tool.name}":`, error.message);
+    }
 
     console.log(`Resolved: ${tool.name}`);
     return;
@@ -23,6 +30,12 @@ async function officialWebsiteResolver(tool) {
       lastChecked: new Date(),
     }
   );
+
+  try {
+    await syncToolToSearch(tool._id);
+  } catch (error) {
+    console.error(`Meilisearch sync failed for Tool "${tool.name}":`, error.message);
+  }
 
   console.log(`Marked unresolvable: ${tool.name}`);
 }

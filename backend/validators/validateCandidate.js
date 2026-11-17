@@ -1,5 +1,6 @@
 const CandidateTool = require("../models/CandidateTool");
 const Tool = require("../models/Tool");
+const { syncToolToSearch } = require("../services/toolSearchSync");
 
 async function validateCandidate(candidate) {
   // Ignore invalid candidates
@@ -64,6 +65,12 @@ async function validateCandidate(candidate) {
       validationStatus: "validated",
     },
   );
+
+  try {
+    await syncToolToSearch(tool._id);
+  } catch (error) {
+    console.error(`Meilisearch sync failed for approved Tool "${tool.name}":`, error.message);
+  }
 
   console.log(candidate.name);
 }

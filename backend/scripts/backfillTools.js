@@ -35,6 +35,7 @@ require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") }
 const connectDB = require("../config/db");
 const CandidateTool = require("../models/CandidateTool");
 const Tool = require("../models/Tool");
+const { syncToolToSearch } = require("../services/toolSearchSync");
 
 async function backfill() {
   await connectDB();
@@ -148,6 +149,7 @@ async function backfill() {
 
     // ── Step 4: apply the update ──────────────────────────────────────────────
     await Tool.updateOne({ _id: tool._id }, { $set: update });
+    await syncToolToSearch(tool._id);
 
     const updatedFields = Object.keys(update).join(", ");
     console.log(`  [UPDATED]     "${tool.name}" → set: ${updatedFields}`);

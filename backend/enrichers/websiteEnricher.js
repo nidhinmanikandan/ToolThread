@@ -2,6 +2,15 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 
 const Tool = require("../models/Tool");
+const { syncToolToSearch } = require("../services/toolSearchSync");
+
+async function syncEnrichedTool(tool) {
+  try {
+    await syncToolToSearch(tool._id);
+  } catch (error) {
+    console.error(`Meilisearch sync failed for enriched Tool "${tool.name}":`, error.message);
+  }
+}
 
 module.exports = async function websiteEnricher() {
   console.log("Enriching websites...");
@@ -34,6 +43,7 @@ module.exports = async function websiteEnricher() {
         tool.lastChecked = new Date();
 
         await tool.save();
+        await syncEnrichedTool(tool);
 
         console.log(`Enriched npm metadata: ${tool.name}`);
         continue;
@@ -66,6 +76,7 @@ module.exports = async function websiteEnricher() {
       tool.lastChecked = new Date();
 
       await tool.save();
+      await syncEnrichedTool(tool);
 
       console.log(`Enriched: ${tool.name}`);
     } catch (err) {
